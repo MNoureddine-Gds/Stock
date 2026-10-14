@@ -1,2 +1,0 @@
-# Stock
-outil de scanner 
