@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recherche articles – OneDrive</title>
+<style>
+:root{--blue:#1d4f91;--light:#f3f6fb;--border:#d7e0ed;--text:#172033}
+*{box-sizing:border-box}body{margin:0;background:#f5f7fb;color:var(--text);font:16px/1.45 Arial,Helvetica,sans-serif}
+main{max-width:900px;margin:24px auto;padding:0 14px}
+header,.panel,.result{background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:14px}
+header{padding:18px}h1{font-size:22px;margin:0 0 5px}h2{font-size:17px;margin:0 0 12px}.muted{color:#66748b;font-size:14px}
+button{border:0;border-radius:10px;background:var(--blue);color:white;font-size:15px;font-weight:700;padding:12px 16px;cursor:pointer}
+button:disabled{background:#dfe4ec;color:#8a94a4;cursor:not-allowed}.secondary{background:#e9eef6;color:#26364e}
+input[type=text]{width:100%;padding:13px;border:2px solid #222;border-radius:10px;font-size:16px;background:white}
+.row{display:flex;gap:10px}.row input{flex:1;min-width:0}
+.status{margin-top:8px;font-size:14px;color:#52647d}.status.error{color:#b42318}.status.ok{color:#147548}
+.file-list{margin-top:12px;display:grid;gap:8px}.file-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border:1px solid var(--border);border-radius:9px}
+.file-item span{overflow-wrap:anywhere}.file-item button{flex-shrink:0}
+.breadcrumb{margin-top:10px;font-size:14px;color:#52647d;overflow-wrap:anywhere}
+.result{display:none}.pill{display:inline-block;background:#e6f3eb;color:#17643d;border-radius:20px;padding:5px 10px;font-size:13px;margin-bottom:12px}
+.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.field{background:var(--light);padding:12px;border-radius:10px;overflow-wrap:anywhere}.field.wide{grid-column:1/-1}.field small{display:block;color:#65748b;margin-bottom:3px}.field strong{font-size:16px}
+#camera{display:none;width:100%;max-height:340px;background:#111;border-radius:10px;margin-top:12px}
+.hidden{display:none!important}
+@media(max-width:600px){.row{flex-direction:row}.cards{grid-template-columns:1fr}.field.wide{grid-column:auto}main{margin:12px auto}h1{font-size:21px}.file-item{align-items:flex-start;flex-direction:column}}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>Recherche d’articles – Magasin mécanique</h1>
+  <div class="muted">Recherchez un article par son code ou scannez son code-barres. Seul l’article recherché sera affiché.</div>
+</header>
+
+<section class="panel">
+  <h2>1. Charger le fichier Excel</h2>
+  <p class="muted">Sélectionnez le fichier Excel enregistré sur votre ordinateur. La liste complète des articles ne sera pas affichée : seule la fiche de l’article recherché apparaîtra.</p>
+  <label for="excelFile" style="display:block;font-weight:700;margin:10px 0 6px">Fichier Excel (.xlsx, .xlsm, .xls ou .csv)</label>
+  <input id="excelFile" type="file" accept=".xlsx,.xlsm,.xls,.csv" style="width:100%;padding:10px;border:1px solid #aab7ca;border-radius:10px;background:white">
+  <div id="fileStatus" class="status">Aucun fichier chargé.</div>
+</section>
+
+<section class="panel">
+  <h2>2. Scanner le code-barres</h2>
+  <div class="row">
+    <button id="startCamera" type="button">📷 Démarrer le scanner</button>
+    <button id="stopCamera" type="button" class="secondary" disabled>Arrêter</button>
+  </div>
+  <video id="camera" playsinline></video>
+  <div id="scanStatus" class="status">La caméra nécessite HTTPS et l’autorisation du navigateur. Si le scanner n’est pas compatible, utilisez un lecteur USB ou la recherche manuelle.</div>
+</section>
+
+
+<section class="panel">
+  <h2>Ou rechercher manuellement par code article</h2>
+  <form id="searchForm" class="row">
+    <input id="articleCode" type="text" inputmode="numeric" autocomplete="off" placeholder="Ex. 400012586" aria-label="Code article">
+    <button type="submit">Rechercher</button>
+  </form>
+  <div id="searchStatus" class="status">Connectez-vous à OneDrive et choisissez le fichier Excel avant de rechercher.</div>
+</section>
+
+<section id="result" class="result" aria-live="polite">
+  <span id="resultPill" class="pill">Article trouvé</span>
+  <div id="resultCards" class="cards"></div>
+</section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  // Colonnes demandées : A, B, C, D, F, G, H.
+  const columns = [
+    {key:'code', label:'Code article', index:0},
+    {key:'designation', label:'Désignation', index:1},
+    {key:'magasin', label:'Magasin', index:2},
+    {key:'division', label:'Division', index:3},
+    {key:'date', label:"Date d’inventaire", index:5},
+    {key:'stock', label:'Stock actuel', index:6},
+    {key:'adresse', label:'Adresse', index:7}
+  ];
+  let msalApp = null, account = null, currentFolderId = null, folderStack = [];
+  let articles = [], stream = null, scanTimer = null, detector = null;
+  let selectedFileName = '';
+
+  function setStatus(id, message, type='') {
+    $(id).textContent = message;
+    $(id).className = 'status' + (type ? ' ' + type : '');
+  }
+  function clean(v) { return v === null || v === undefined ? '' : String(v).trim(); }
+  function normalizeCode(v) {
+    let s = clean(v).replace(/\s+/g, '');
+    if (/^\d+\.0$/.test(s)) s = s.slice(0, -2);
+    return s.toUpperCase();
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function dateText(value, cell) {
+    if (value === null || value === undefined || value === '') return '';
+    if (typeof value === 'number' && window.XLSX && XLSX.SSF) {
+      return XLSX.SSF.format((cell && cell.z) || 'm/d/yy', value) || clean(value);
+    }
+    return clean(value);
+  }
+
+  $('excelFile').addEventListener('change', async e => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setStatus('fileStatus', 'Lecture du fichier Excel…');
+    try {
+      if (/\.csv$/i.test(file.name)) {
+        const text = new TextDecoder('utf-8').decode(await file.arrayBuffer());
+        const rows = text.split(/\r?\n/).filter(Boolean).map(line => {
+          const delimiter = line.includes(';') ? ';' : ',';
+          return line.split(delimiter);
+        });
+        parseRows(rows, null);
+      } else {
+        if (!window.XLSX) throw new Error('La bibliothèque Excel ne s’est pas chargée. Vérifiez votre connexion Internet.');
+        const workbook = XLSX.read(await file.arrayBuffer(), {type:'array', cellDates:false});
+        const sheetName = workbook.SheetNames[0];
+        if (!sheetName) throw new Error('Le fichier ne contient aucune feuille.');
+        const sheet = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(sheet, {header:1, raw:true, defval:''});
+        parseRows(rows, sheet);
+      }
+      setStatus('fileStatus', `Fichier chargé : ${file.name}. ${articles.length} articles indexés.`, 'ok');
+      setStatus('searchStatus', 'Fichier prêt. Saisissez ou scannez un code article.');
+      $('result').style.display = 'none';
+    } catch(err) {
+      articles = [];
+      setStatus('fileStatus', 'Erreur : ' + (err.message || err), 'error');
+    }
+  });
+
+  function parseRows(rows, sheet) {
+    if (!rows || rows.length < 2) throw new Error('La feuille ne contient pas de lignes d’articles.');
+    articles = rows.slice(1).map((row, i) => {
+      const item = {};
+      columns.forEach(col => {
+        const value = row[col.index];
+        const cell = sheet ? sheet[XLSX.utils.encode_cell({r:i+1,c:col.index})] : null;
+        item[col.key] = col.key === 'date' ? dateText(value, cell) : clean(value);
+      });
+      item.codeNormalized = normalizeCode(item.code);
+      return item;
+    }).filter(item => item.codeNormalized);
+    if (!articles.length) throw new Error('Aucun code article trouvé en colonne A. Vérifiez les en-têtes et la position des colonnes.');
+  }
+
+  function search(code) {
+    const wanted=normalizeCode(code);
+    if (!wanted) { setStatus('searchStatus','Saisissez ou scannez un code article.','error'); $('result').style.display='none'; return; }
+    if (!articles.length) { setStatus('searchStatus','Chargez d’abord votre fichier Excel.','error'); return; }
+    const found=articles.find(a=>a.codeNormalized===wanted);
+    if (!found) { setStatus('searchStatus','Aucun article trouvé pour le code : '+wanted,'error'); $('result').style.display='none'; return; }
+    setStatus('searchStatus','Article trouvé : '+found.code,'ok');
+    $('resultCards').innerHTML=columns.map(c=>{
+      const wide=['magasin','adresse'].includes(c.key)?' wide':'';
+      return `<div class="field${wide}"><small>${escapeHtml(c.label)}</small><strong>${escapeHtml(found[c.key]||'—')}</strong></div>`;
+    }).join('');
+    $('result').style.display='block';
+    $('result').scrollIntoView({behavior:'smooth',block:'nearest'});
+  }
+  $('searchForm').addEventListener('submit',e=>{e.preventDefault();search($('articleCode').value);});
+
+  async function stopCamera() {
+    if(scanTimer){clearTimeout(scanTimer);scanTimer=null;}
+    if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+    $('camera').srcObject=null;$('camera').style.display='none';
+    $('startCamera').disabled=false;$('stopCamera').disabled=true;
+  }
+  $('stopCamera').addEventListener('click',stopCamera);
+  $('startCamera').addEventListener('click',async()=>{
+    if(!articles.length){setStatus('scanStatus','Chargez d’abord votre fichier Excel.','error');return;}
+    if(!('BarcodeDetector' in window)){setStatus('scanStatus','Ce navigateur ne prend pas en charge le scanner caméra. Utilisez la recherche manuelle ou un lecteur USB.','error');return;}
+    try{
+      detector=new BarcodeDetector({formats:['code_128','code_39','ean_13','ean_8','upc_a','upc_e','itf','codabar','qr_code']});
+      stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+      $('camera').srcObject=stream;$('camera').style.display='block';await $('camera').play();
+      $('startCamera').disabled=true;$('stopCamera').disabled=false;
+      setStatus('scanStatus','Pointez la caméra vers le code-barres.');scanFrame();
+    }catch(err){await stopCamera();setStatus('scanStatus','Caméra inaccessible. Autorisez la caméra et vérifiez HTTPS.','error');}
+  });
+  async function scanFrame(){
+    if(!stream||!detector)return;
+    try{
+      const hits=await detector.detect($('camera'));
+      if(hits&&hits.length&&hits[0].rawValue){
+        const code=hits[0].rawValue;$('articleCode').value=code;search(code);
+        setStatus('scanStatus','Code scanné : '+code);await stopCamera();return;
+      }
+    }catch(_){}
+    scanTimer=setTimeout(scanFrame,250);
+  }
+})();
+</script>
+</body>
+</html>
