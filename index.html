@@ -30,6 +30,8 @@
     .field strong { display: block; font-size: .8rem; color: #53657b; margin-bottom: 4px; }
     #video { width: 100%; max-height: 360px; background: #111; border-radius: 8px; margin-top: 10px; }
     .small { font-size: .88rem; color: #526176; }
+    .barcode-visual { background: #fff; border-radius: 7px; padding: 10px; margin-top: 6px; text-align: center; overflow-x: auto; }
+    .barcode-visual svg { max-width: 100%; height: auto; }
   </style>
 </head>
 <body>
@@ -77,6 +79,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script>
   // Configuration Web Firebase fournie pour le projet gestion-de-stock-suivi.
   const firebaseConfig = {
@@ -238,7 +241,12 @@
         const initialQty = field(d, ['initialqy', 'initialqty', 'initialQuantity']);
         const currentQty = field(d, ['currentqy', 'currentqty', 'currentQuantity', 'quantity', 'stockactuel']);
         const date = field(d, ['inventorydate', 'dateinventaire', 'inventoryDate']);
-        const barcode = Array.isArray(d.barcodes) ? d.barcodes.join(', ') : field(d, ['barcodes', 'barcode', 'codebarre']);
+        // Afficher le code-barres sans les astérisques de délimitation Code 39.
+        const barcodeBrut = Array.isArray(d.barcodes)
+          ? d.barcodes.join(', ')
+          : field(d, ['barcodes', 'barcode', 'codebarre']);
+        const barcode = String(barcodeBrut).replace(/\*/g, '').trim();
+        const barcodeSvgId = 'barcode-svg-' + index;
         return `<article class="result">
           <h3>Position ${index + 1}</h3>
           <div class="grid">
@@ -250,10 +258,24 @@
             <div class="field"><strong>Stock actuel</strong>${escapeHtml(currentQty)}</div>
             <div class="field"><strong>Emplacement</strong>${escapeHtml(field(d, ['address', 'emplacement', 'location']))}</div>
             <div class="field"><strong>Date inventaire</strong>${escapeHtml(date)}</div>
-            <div class="field"><strong>Code-barres</strong>${escapeHtml(barcode)}</div>
+            <div class="field"><strong>Code-barres</strong><div class="barcode-visual">${barcode ? `<svg id="${barcodeSvgId}"></svg><div>${escapeHtml(barcode)}</div>` : '<span class="small">Aucun code-barres enregistré</span>'}</div></div>
           </div>
         </article>`;
       }).join('');
+      // Générer un code-barres visuel Code 39 à partir du numéro enregistré.
+      docs.forEach((d, index) => {
+        const raw = Array.isArray(d.barcodes) ? d.barcodes[0] : field(d, ['barcodes', 'barcode', 'codebarre']);
+        const value = String(raw || '').replace(/\*/g, '').trim();
+        const svg = document.getElementById('barcode-svg-' + index);
+        if (value && svg) {
+          if (window.JsBarcode) {
+            try { JsBarcode(svg, value, { format: 'CODE39', lineColor: '#000000', background: '#ffffff', width: 2, height: 65, displayValue: false, margin: 8 }); }
+            catch (e) { console.warn('Impossible de générer le code-barres visuel :', e); svg.outerHTML = '<span class=\"small\">Format du code-barres non pris en charge</span>'; }
+          } else {
+            svg.outerHTML = '<span class=\"small\">La bibliothèque de génération du code-barres ne se charge pas. Vérifiez la connexion Internet.</span>';
+          }
+        }
+      });
     } catch (error) {
       console.error(error);
       showStatus(searchStatus,
