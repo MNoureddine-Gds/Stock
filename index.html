@@ -16,6 +16,7 @@
     label { display: block; font-weight: 600; margin: 12px 0 6px; }
     input { box-sizing: border-box; width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 1rem; }
     button { border: 0; border-radius: 8px; padding: 12px 15px; margin: 10px 6px 0 0; cursor: pointer; font-weight: 700; font-size: .95rem; }
+    button:disabled { cursor: wait; opacity: .65; }
     .primary { background: #1769aa; color: white; }
     .secondary { background: #e5edf5; color: #163b65; }
     .danger { background: #fce7e7; color: #9b1c1c; }
@@ -63,10 +64,12 @@
       <input id="searchInput" type="text" placeholder="Ex. 400012586" autocomplete="off">
       <button id="searchBtn" class="primary" type="button">Rechercher</button>
       <button id="scanBtn" class="secondary" type="button">Scanner avec la caméra</button>
+      <button id="exportBtn" class="secondary" type="button">Exporter la liste des articles</button>
       <button id="stopScanBtn" class="danger hidden" type="button">Arrêter le scan</button>
       <video id="video" class="hidden" playsinline muted></video>
       <p class="small">Le scan par caméra nécessite un navigateur compatible et une page HTTPS (ou localhost).</p>
       <div id="searchStatus" class="status hidden" role="status"></div>
+      <div id="exportStatus" class="status hidden" role="status" aria-live="polite"></div>
     </div>
     <div class="card">
       <h2>Résultats</h2>
@@ -79,6 +82,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" onerror="this.dataset.loadError = 'true'"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script>
   // Configuration Web Firebase fournie pour le projet gestion-de-stock-suivi.
@@ -100,11 +104,17 @@
   const appCard = document.getElementById('appCard');
   const loginStatus = document.getElementById('loginStatus');
   const searchStatus = document.getElementById('searchStatus');
+  const exportStatus = document.getElementById('exportStatus');
+  const exportButton = document.getElementById('exportBtn');
   const results = document.getElementById('results');
   const searchInput = document.getElementById('searchInput');
   const video = document.getElementById('video');
   let scanStream = null;
   let scanActive = false;
+  let authSessionVersion = 0;
+  let exportInProgress = false;
+  let exportCancelled = false;
+  let activeExportUid = null;
 
   function showStatus(el, message, isError = false, isSuccess = false) {
     el.textContent = message;
@@ -139,6 +149,11 @@
   }
 
   auth.onAuthStateChanged((user) => {
+    authSessionVersion += 1;
+    if (exportInProgress && (!user || user.uid !== activeExportUid)) {
+      exportCancelled = true;
+      showStatus(exportStatus, 'Export interrompu, car la session a changé. Aucun fichier complet n’a été téléchargé.', true);
+    }
     if (user) {
       loginCard.classList.add('hidden');
       appCard.classList.remove('hidden');
@@ -157,6 +172,7 @@
   });
 
   document.getElementById('searchBtn').addEventListener('click', () => searchStock(searchInput.value));
+  exportButton.addEventListener('click', exportStock);
   searchInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') searchStock(searchInput.value);
   });
@@ -171,6 +187,231 @@
     }
     return '—';
   }
+
+  const exportPageSize = 500;
+  const exportSheetRowLimit = 1048576;
+  const exportHeaders = [
+    'Code article',
+    'Désignation',
+    'Code-barres',
+    'Magasin',
+    'Division',
+    'Emplacement',
+    'Quantité disponible',
+    'Date d’extraction'
+  ];
+
+  function ensureExportSession(user, sessionVersion) {
+    if (
+      exportCancelled ||
+      !auth.currentUser ||
+      auth.currentUser.uid !== user.uid ||
+      authSessionVersion !== sessionVersion
+    ) {
+      const error = new Error('La session a changé pendant l’export.');
+      error.code = 'export/session-changed';
+      throw error;
+    }
+  }
+
+  function exportSource(data, names) {
+    for (const name of names) {
+      const value = data[name];
+      if (value === undefined || value === null) continue;
+      if (typeof value === 'string' && value.trim() === '') continue;
+      return value;
+    }
+    return undefined;
+  }
+
+  function serializeExportText(value) {
+    if (value === undefined || value === null) return '';
+    if (typeof value === 'string') return value.trim() === '' ? '' : value;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    if (value instanceof Date) {
+      if (!Number.isFinite(value.getTime())) throw new Error('Une date ne peut pas être représentée dans le fichier Excel.');
+      return value.toISOString();
+    }
+    if (value && typeof value.toDate === 'function') {
+      const date = value.toDate();
+      if (!(date instanceof Date) || !Number.isFinite(date.getTime())) {
+        throw new Error('Un horodatage Firestore ne peut pas être représenté dans le fichier Excel.');
+      }
+      return date.toISOString();
+    }
+    if (typeof value === 'object') {
+      const json = JSON.stringify(value, (key, nestedValue) => {
+        if (nestedValue instanceof Date) return nestedValue.toISOString();
+        if (nestedValue && typeof nestedValue.toDate === 'function') {
+          const date = nestedValue.toDate();
+          if (!(date instanceof Date) || !Number.isFinite(date.getTime())) {
+            throw new Error('Un horodatage Firestore ne peut pas être représenté dans le fichier Excel.');
+          }
+          return date.toISOString();
+        }
+        return nestedValue;
+      });
+      if (typeof json !== 'string') throw new Error('Une valeur ne peut pas être représentée dans le fichier Excel.');
+      return json;
+    }
+    throw new Error('Une valeur ne peut pas être représentée dans le fichier Excel.');
+  }
+
+  function exportTextCell(value) {
+    return { t: 's', v: serializeExportText(value) };
+  }
+
+  function exportQuantityCell(value, documentId) {
+    if (value === undefined || value === null) return exportTextCell('');
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) {
+        throw new Error('La quantité de la position ' + documentId + ' n’est pas un nombre fini.');
+      }
+      return { t: 'n', v: value };
+    }
+    if (typeof value !== 'string') {
+      throw new Error('La quantité de la position ' + documentId + ' a un format non pris en charge.');
+    }
+
+    const trimmed = value.trim();
+    if (trimmed === '') return exportTextCell('');
+    if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
+      const significantDigits = trimmed.replace(/[-.]/g, '').replace(/^0+/, '');
+      const numericValue = Number(trimmed);
+      if (Number.isFinite(numericValue) && (significantDigits.length || 1) <= 15) {
+        return { t: 'n', v: numericValue };
+      }
+    }
+    return exportTextCell(value);
+  }
+
+  function exportBarcodeText(data) {
+    const value = exportSource(data, ['barcodes', 'barcode', 'codebarre']);
+    if (Array.isArray(value)) {
+      return value.map(serializeExportText).filter(Boolean).map(code => code.replace(/\*/g, '')).join(', ');
+    }
+    return serializeExportText(value).replace(/\*/g, '');
+  }
+
+  function exportPositionRow(document, extractionDateSerial) {
+    const data = document.data();
+    const dateCell = { t: 'n', v: extractionDateSerial, z: 'yyyy-mm-dd' };
+    return [
+      exportTextCell(exportSource(data, ['articlecode', 'name'])),
+      exportTextCell(exportSource(data, ['designation', 'name', 'articleName', 'description'])),
+      exportTextCell(exportBarcodeText(data)),
+      exportTextCell(exportSource(data, ['storename', 'storecode', 'magasin'])),
+      exportTextCell(exportSource(data, ['divisionname', 'divisioncode', 'division'])),
+      exportTextCell(exportSource(data, ['address', 'emplacement', 'location'])),
+      exportQuantityCell(exportSource(data, ['currentqy', 'currentqty', 'currentQuantity', 'quantity', 'stockactuel']), document.id),
+      dateCell
+    ];
+  }
+
+  function createStockWorkbook(rows) {
+    const workbook = XLSX.utils.book_new();
+    const dataRowsPerSheet = exportSheetRowLimit - 1;
+    const sheetCount = Math.max(1, Math.ceil(rows.length / dataRowsPerSheet));
+
+    for (let sheetIndex = 0; sheetIndex < sheetCount; sheetIndex += 1) {
+      const sheetRows = [exportHeaders.map(exportTextCell)];
+      const start = sheetIndex * dataRowsPerSheet;
+      const end = Math.min(start + dataRowsPerSheet, rows.length);
+      for (let rowIndex = start; rowIndex < end; rowIndex += 1) {
+        sheetRows.push(rows[rowIndex]);
+      }
+      const worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
+      const sheetName = sheetIndex === 0 ? 'Stock' : 'Stock ' + (sheetIndex + 1);
+      XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+    }
+    return workbook;
+  }
+
+  function extractionDate() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return {
+      fileDate: year + '-' + month + '-' + day,
+      excelSerial: Math.floor(Date.UTC(year, now.getMonth(), now.getDate()) / 86400000) + 25569
+    };
+  }
+
+  function exportErrorMessage(error) {
+    if (error && error.code === 'export/session-changed') {
+      return 'Export interrompu, car la session a changé. Aucun fichier complet n’a été téléchargé.';
+    }
+    if (error && (error.code === 'permission-denied' || error.code === 'unauthenticated')) {
+      return 'Firestore a refusé la lecture complète du stock pour ce compte. Vérifiez les règles d’accès.';
+    }
+    if (error && error.code === 'unavailable') {
+      return 'Firestore est temporairement indisponible. Vérifiez la connexion puis réessayez.';
+    }
+    if (!window.XLSX) {
+      return 'La bibliothèque Excel ne s’est pas chargée. Vérifiez la connexion Internet puis réessayez.';
+    }
+    return 'L’export a échoué. Aucun fichier complet n’a été téléchargé. Détail : ' +
+      (error && (error.code || error.message) ? error.code || error.message : 'erreur inconnue');
+  }
+
+  async function exportStock() {
+    const user = auth.currentUser;
+    if (!user) {
+      showStatus(exportStatus, 'Connectez-vous avant d’exporter le stock.', true);
+      return;
+    }
+    if (!window.XLSX) {
+      showStatus(exportStatus, exportErrorMessage(), true);
+      return;
+    }
+
+    const sessionVersion = authSessionVersion;
+    const date = extractionDate();
+    const documents = [];
+    let lastDocument = null;
+    exportCancelled = false;
+    exportInProgress = true;
+    activeExportUid = user.uid;
+    exportButton.disabled = true;
+    showStatus(exportStatus, 'Lecture de Firestore en cours : 0 position lue…');
+
+    try {
+      while (true) {
+        ensureExportSession(user, sessionVersion);
+        let query = db.collection('stockPositions')
+          .orderBy(firebase.firestore.FieldPath.documentId())
+          .limit(exportPageSize);
+        if (lastDocument) query = query.startAfter(lastDocument);
+
+        const snapshot = await query.get();
+        ensureExportSession(user, sessionVersion);
+        snapshot.forEach(document => documents.push(document));
+        showStatus(exportStatus, 'Lecture de Firestore en cours : ' + documents.length + ' position(s) lue(s)…');
+        if (snapshot.size < exportPageSize) break;
+        lastDocument = snapshot.docs[snapshot.docs.length - 1];
+      }
+
+      ensureExportSession(user, sessionVersion);
+      const rows = documents.map(document => exportPositionRow(document, date.excelSerial));
+      showStatus(exportStatus, 'Création du fichier Excel pour ' + rows.length + ' position(s)…');
+      ensureExportSession(user, sessionVersion);
+      const workbook = createStockWorkbook(rows);
+      ensureExportSession(user, sessionVersion);
+      XLSX.writeFile(workbook, 'Export_Stock_' + date.fileDate + '.xlsx');
+      if (exportInProgress && !exportCancelled && auth.currentUser && auth.currentUser.uid === user.uid) {
+        showStatus(exportStatus, 'Export terminé : ' + rows.length + ' position(s) exportée(s).', false, true);
+      }
+    } catch (error) {
+      console.error('Échec de l’export du stock :', error);
+      showStatus(exportStatus, exportErrorMessage(error), true);
+    } finally {
+      exportInProgress = false;
+      activeExportUid = null;
+      exportButton.disabled = false;
+    }
+  }
+
   function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, ch => ({
       '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'

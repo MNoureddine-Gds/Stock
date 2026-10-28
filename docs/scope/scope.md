@@ -35,12 +35,12 @@ Code dans `index.html`.
 Ajouter à la page principale un export des positions de stock accessibles à la personne connectée, sans modifier les données ni remplacer la recherche et la lecture des codes barres.
 **Done when:** le fichier `.xlsx` daté contient une ligne par position autorisée, les colonnes demandées et les valeurs nulles ou absentes correctement distinguées; toutes les pages sont parcourues même au delà de 8 000 articles; les erreurs sont signalées clairement et les fonctions existantes restent utilisables.
 - [x] Concevoir la fonctionnalité : `/architect export stock`
-- [ ] Construire : `/develop export stock`
+- [x] Construire : `/develop export stock`
   - [ ] Vérifier les règles Firestore et la source SheetJS (AC-2, AC-9)
-  - [ ] Ajouter le bouton et le premier téléchargement réel (AC-1, AC-4, AC-5, AC-8)
-  - [ ] Paginer toutes les positions et créer les feuilles Excel (AC-2, AC-3, AC-6, AC-7)
-  - [ ] Gérer les erreurs, les sessions et les valeurs manquantes (AC-5, AC-9, AC-10, AC-11, AC-12)
-  - [ ] Vérifier le volume et préserver recherche et scan (AC-13, AC-14)
+  - [x] Ajouter le bouton et le premier téléchargement réel (AC-1, AC-4, AC-5, AC-8)
+  - [x] Paginer toutes les positions et créer les feuilles Excel (AC-2, AC-3, AC-6, AC-7)
+  - [x] Gérer les erreurs, les sessions et les valeurs manquantes (AC-5, AC-9, AC-10, AC-11, AC-12)
+  - [x] Vérifier le volume et préserver recherche et scan (AC-13, AC-14)
 - [ ] Vérifier : `/check verify export stock`
 - [ ] Tester : `/test export stock`
 Spec [0001](../specs/0001-export-stock-excel.md)
