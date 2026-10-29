@@ -1,7 +1,7 @@
 # 0002. Synchroniser automatiquement le stock depuis OneDrive vers Google Sheets puis Firebase
 
 **Date**: 2026-10-28
-**Status**: Proposed
+**Status**: Superseded by [0003](0003-stock-sync-onedrive-google-firebase.md)
 
 ## Summary
 

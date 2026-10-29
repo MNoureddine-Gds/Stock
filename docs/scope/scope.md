@@ -13,7 +13,7 @@ Application web de consultation du stock pour les personnes autorisées. Elle ut
 | 2 | Recherche et consultation des positions de stock | Déjà en place | existing |
 | 3 | Lecture des codes barres par caméra | Déjà en place | existing |
 | 4 | Exporter les articles en fichier Excel | Slice 1 | done |
-| 5 | Synchroniser automatiquement le stock depuis OneDrive | Slice 2 | planned |
+| 5 | Synchroniser automatiquement le stock depuis OneDrive | Slice 2 | in-progress |
 
 ## Déjà en place
 
