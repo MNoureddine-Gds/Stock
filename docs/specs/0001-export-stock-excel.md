@@ -1,7 +1,7 @@
 # 0001. Exporter les positions de stock dans Excel
 
 **Date**: 2026-10-28
-**Status**: In Progress
+**Status**: Accepted
 
 ## Summary
 
