@@ -1,0 +1,108 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function importManager() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/stockImportManagers/$(request.auth.uid));
+    }
+
+    function validPosition() {
+      let data = request.resource.data;
+      return data.keys().hasAll([
+          'articlecode', 'storename', 'divisionname', 'address',
+          'importBatchId', 'initialqy', 'currentqy', 'quantity'
+        ]) &&
+        data.keys().hasOnly([
+          'articlecode', 'storename', 'divisionname', 'address',
+          'importBatchId', 'initialqy', 'currentqy', 'quantity',
+          'designation', 'barcodes', 'inventorydate', 'dateinventaire'
+        ]) &&
+        data.articlecode is string && data.articlecode.size() > 0 &&
+        data.storename is string && data.storename.size() > 0 &&
+        data.divisionname is string && data.divisionname.size() > 0 &&
+        data.address is string && data.address.size() > 0 &&
+        data.importBatchId is string &&
+        data.initialqy is number && data.initialqy >= 0 &&
+        data.currentqy is number && data.currentqy == data.initialqy &&
+        data.quantity is number && data.quantity == data.initialqy &&
+        (!data.keys().hasAny(['designation']) || data.designation is string) &&
+        (!data.keys().hasAny(['barcodes']) ||
+          (data.barcodes is list &&
+            data.barcodes.size() <= 1 &&
+            (data.barcodes.size() == 0 || data.barcodes[0] is string))) &&
+        (!data.keys().hasAny(['inventorydate', 'dateinventaire']) ||
+          (data.keys().hasAll(['inventorydate', 'dateinventaire']) &&
+            data.inventorydate is string &&
+            data.dateinventaire is string &&
+            data.inventorydate == data.dateinventaire &&
+            data.inventorydate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')));
+    }
+
+    function validRunFields(data) {
+      return data.keys().hasAll([
+          'status', 'createdAt', 'expiresAt', 'rowsRead',
+          'createdCount', 'skippedCount', 'rejectedCount'
+        ]) &&
+        data.keys().hasOnly([
+          'status', 'createdAt', 'expiresAt', 'rowsRead',
+          'createdCount', 'skippedCount', 'rejectedCount'
+        ]) &&
+        data.status in ['in_progress', 'completed', 'partial'] &&
+        data.createdAt is timestamp &&
+        data.expiresAt is timestamp &&
+        data.expiresAt > data.createdAt &&
+        data.rowsRead is int && data.rowsRead > 0 &&
+        data.createdCount is int && data.createdCount > 0 &&
+        data.skippedCount is int && data.skippedCount >= 0 &&
+        data.rejectedCount is int && data.rejectedCount >= 0 &&
+        data.createdCount + data.skippedCount + data.rejectedCount <= data.rowsRead;
+    }
+
+    function runIsAvailable(runId) {
+      let path = /databases/$(database)/documents/stockImportRuns/$(runId);
+      return existsAfter(path) &&
+        getAfter(path).data.status == 'in_progress';
+    }
+
+    match /stockPositions/{documentId} {
+      allow get, list: if signedIn();
+      allow create: if importManager() &&
+        validPosition() &&
+        runIsAvailable(request.resource.data.importBatchId);
+      allow update, delete: if false;
+    }
+
+    match /stockImportManagers/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow list, create, update, delete: if false;
+    }
+
+    match /stockImportRuns/{runId} {
+      allow get, list: if importManager();
+      allow create: if importManager() &&
+        validRunFields(request.resource.data) &&
+        request.resource.data.status == 'in_progress' &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.createdCount <= 400;
+      allow update: if importManager() &&
+        resource.data.status == 'in_progress' &&
+        validRunFields(request.resource.data) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'rowsRead', 'createdCount', 'skippedCount', 'rejectedCount'
+        ]) &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.expiresAt == resource.data.expiresAt &&
+        request.resource.data.rowsRead == resource.data.rowsRead &&
+        request.resource.data.createdCount >= resource.data.createdCount &&
+        request.resource.data.createdCount <= resource.data.createdCount + 400 &&
+        request.resource.data.skippedCount >= resource.data.skippedCount &&
+        request.resource.data.rejectedCount >= resource.data.rejectedCount;
+      allow delete: if false;
+    }
+  }
+}

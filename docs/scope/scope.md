@@ -13,7 +13,11 @@ Application web de consultation du stock pour les personnes autorisées. Elle ut
 | 2 | Recherche et consultation des positions de stock | Déjà en place | existing |
 | 3 | Lecture des codes barres par caméra | Déjà en place | existing |
 | 4 | Exporter les articles en fichier Excel | Slice 1 | done |
-| 5 | Synchroniser automatiquement le stock depuis OneDrive | Slice 2 | in-progress |
+| 5 | Synchroniser automatiquement le stock depuis OneDrive | Hors périmètre | dropped |
+| 6 | Importer le stock initial depuis Excel | Slice 2 | in-progress |
+| 7 | Gérer les articles et positions | Slice 3 | planned |
+| 8 | Enregistrer les mouvements de stock | Slice 3 | planned |
+| 9 | Réaliser l’inventaire physique | Slice 3 | planned |
 
 ## Déjà en place
 
@@ -46,20 +50,43 @@ Ajouter à la page principale un export des positions de stock accessibles à la
   - Tests automatisés non exécutés, acceptés par l’utilisateur.
 Spec [0001](../specs/0001-export-stock-excel.md)
 
-## Slice 2 : Synchronisation automatique
+## Hors périmètre
 
-### 5. Synchroniser automatiquement le stock depuis OneDrive · needs a decision
-Quand le classeur de stock change sur OneDrive, transmettre automatiquement ses données vers Google Sheets puis Firebase, afin d’éviter la mise à jour manuelle. Le classeur contient plusieurs feuilles et des formules; ses colonnes et règles de synchronisation restent à examiner avec le fichier accessible.
-**Done when:** un changement de classeur déclenche le flux vers Google Sheets puis Firebase; les positions existantes sont mises à jour et les nouvelles ajoutées sans doublons; les erreurs sont signalées sans présenter une synchronisation incomplète comme réussie.
-- [x] Concevoir la fonctionnalité : `/architect synchronisation automatique OneDrive Google Sheets Firebase`
-- [ ] Construire : `/develop synchronisation stock`
-  - [ ] Confirmer le classeur, ses colonnes, ses formules et le mapping Firestore
-  - [ ] Choisir et configurer le déclenchement et le backend de synchronisation
-  - [ ] Mettre en place le staging Google Sheets et les mises à jour Firestore
-  - [ ] Vérifier les doublons, les erreurs, les reprises et les volumes
-- [ ] Vérifier : `/check verify synchronisation stock`
-- [ ] Tester : `/test synchronisation stock`
-Spec [0002](../specs/0002-synchronisation-automatique-onedrive-google-sheets-firebase.md)
+### 5. Synchroniser automatiquement le stock depuis OneDrive · dropped
+La synchronisation via OneDrive et Google Sheets est abandonnée. La saisie du stock se fera dans l’application, avec Firebase comme base de données.
+
+## Slice 2 : Initialisation de la base
+
+### 6. Importer le stock initial depuis Excel · in-progress
+Permettre à une personne autorisée d’importer le classeur en plusieurs lots pour initialiser progressivement les positions et les quantités de départ dans Firebase. Excel sert uniquement à préparer et transmettre les lots, sans synchronisation permanente.
+**Done when:** chaque lot peut être vérifié avant son import, les erreurs sont visibles et les données acceptées sont enregistrées dans Firebase pour compléter la base initiale.
+- [x] Concevoir (spec) : `/architect import initial du stock depuis Excel`
+- [ ] Construire : `/develop import initial du stock Excel`
+  - [ ] Connecter les droits, le modèle et le premier enregistrement réel (AC-1, AC-2, AC-8, AC-9, AC-10)
+  - [x] Valider le classeur et afficher les erreurs avant confirmation (AC-3 à AC-7)
+  - [ ] Enregistrer par groupes et gérer concurrence, arrêt et reprise (AC-7 à AC-12)
+  - [ ] Ajouter l’historique et l’expiration, préserver les fonctions existantes (AC-1, AC-13, AC-14)
+- [ ] Vérifier : `/check verify import initial du stock Excel`
+- [ ] Tester : `/test import initial du stock Excel`
+Spec [0004](../specs/0004-import-initial-stock-excel.md)
+Code dans [index.html](../../index.html) et [stock-import.js](../../stock-import.js). Règles à valider avant publication : [firestore.rules](../../firestore.rules).
+
+## Slice 3 : Gestion du stock dans l’application
+
+### 7. Gérer les articles et positions · needs a decision
+Permettre aux personnes autorisées d’ajouter et modifier les articles et positions de stock, puis de désactiver un article sans effacer son historique.
+**Done when:** un article peut être ajouté, modifié, désactivé et réactivé sans supprimer ses positions ni ses mouvements historiques.
+- [ ] Concevoir la fonctionnalité : `/architect gestion des articles et positions de stock`
+
+### 8. Enregistrer les mouvements de stock · needs a decision
+Permettre aux personnes autorisées d’enregistrer les entrées, sorties et transferts entre positions dans l’application. Bloquer une sortie qui ferait passer le stock sous zéro.
+**Done when:** chaque mouvement est enregistré et les quantités des positions restent cohérentes, y compris lors d’un transfert et d’une tentative de sortie supérieure au stock disponible.
+- [ ] Concevoir la fonctionnalité : `/architect mouvements entrée sortie transfert stock`
+
+### 9. Réaliser l’inventaire physique · needs a decision
+Permettre aux personnes autorisées de saisir une quantité comptée et de corriger l’écart entre le stock réel et le stock enregistré.
+**Done when:** chaque comptage produit une correction traçable avec l’auteur et la date, et la quantité affichée correspond à la quantité comptée.
+- [ ] Concevoir la fonctionnalité : `/architect inventaire physique stock`
 
 ## Legend
 
