@@ -33,6 +33,20 @@
     .small { font-size: .88rem; color: #526176; }
     .barcode-visual { background: #fff; border-radius: 7px; padding: 10px; margin-top: 6px; text-align: center; overflow-x: auto; }
     .barcode-visual svg { max-width: 100%; height: auto; }
+    .stock-import-actions { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+    .stock-import-actions label { flex: 1 1 260px; margin-bottom: 0; }
+    .stock-import-actions button { margin-right: 0; }
+    .stock-import-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 8px; margin-top: 12px; }
+    .stock-import-summary .field { text-align: center; }
+    .stock-import-table-wrap { overflow-x: auto; margin-top: 12px; }
+    .stock-import-table { width: 100%; border-collapse: collapse; min-width: 680px; }
+    .stock-import-table th, .stock-import-table td { padding: 9px; border-bottom: 1px solid #dbe4ee; text-align: left; vertical-align: top; }
+    .stock-import-table th { color: #53657b; font-size: .82rem; }
+    .stock-import-errors { padding-left: 22px; }
+    .stock-import-errors li { margin: 8px 0; overflow-wrap: anywhere; }
+    .stock-import-history { padding-left: 22px; }
+    .stock-import-history li { margin: 12px 0; }
+    .stock-import-note { color: #526176; font-size: .9rem; }
   </style>
 </head>
 <body>
@@ -70,7 +84,46 @@
       <p class="small">Le scan par caméra nécessite un navigateur compatible et une page HTTPS (ou localhost).</p>
       <div id="searchStatus" class="status hidden" role="status"></div>
       <div id="exportStatus" class="status hidden" role="status" aria-live="polite"></div>
+      <div id="stockImportAccessStatus" class="status hidden" role="status" aria-live="polite"></div>
     </div>
+    <section id="stockImportPanel" class="card hidden" aria-labelledby="stockImportHeading">
+      <h2 id="stockImportHeading">Initialiser le stock depuis Excel</h2>
+      <p class="stock-import-note">Le fichier reste sur cet appareil. Vérifiez les lignes avant de confirmer leur ajout. Les positions existantes ne sont jamais remplacées.</p>
+      <p id="stockImportMobileNotice" class="status hidden" role="status">L’import Excel est disponible sur ordinateur et tablette. La recherche, le scan et l’export restent accessibles ici.</p>
+      <div id="stockImportContent">
+        <div class="stock-import-actions">
+          <button id="stockImportTemplateBtn" class="secondary" type="button">Télécharger le modèle Excel</button>
+          <label for="stockImportFile">Classeur à vérifier (.xlsx)
+            <input id="stockImportFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+          </label>
+        </div>
+        <div id="stockImportStatus" class="status hidden" role="status" aria-live="polite"></div>
+        <div id="stockImportPreview" class="hidden">
+          <div id="stockImportCounters" class="stock-import-summary" aria-live="polite"></div>
+          <p id="stockImportWarnings" class="stock-import-note"></p>
+          <h3>Aperçu des 20 premières lignes valides</h3>
+          <div id="stockImportPreviewTable" class="stock-import-table-wrap"></div>
+          <div id="stockImportErrorSection" class="hidden">
+            <h3>Erreurs de vérification</h3>
+            <ol id="stockImportErrors" class="stock-import-errors"></ol>
+            <button id="stockImportErrorPrevious" class="secondary" type="button">Erreurs précédentes</button>
+            <span id="stockImportErrorPage" class="small"></span>
+            <button id="stockImportErrorNext" class="secondary" type="button">Erreurs suivantes</button>
+          </div>
+          <button id="stockImportConfirmBtn" class="primary" type="button" disabled>Confirmer l’import</button>
+          <button id="stockImportCancelBtn" class="danger hidden" type="button">Arrêter après le groupe en cours</button>
+        </div>
+        <div class="result">
+          <h3>Historique des imports</h3>
+          <p class="stock-import-note">Les résumés sont conservés environ un an. Firebase peut prendre du temps pour supprimer les résumés expirés.</p>
+          <button id="stockImportHistoryBtn" class="secondary" type="button">Afficher l’historique</button>
+          <div id="stockImportHistoryStatus" class="status hidden" role="status" aria-live="polite"></div>
+          <ol id="stockImportHistory" class="stock-import-history"></ol>
+          <button id="stockImportHistoryPrevious" class="secondary hidden" type="button">Page précédente</button>
+          <button id="stockImportHistoryNext" class="secondary hidden" type="button">Page suivante</button>
+        </div>
+      </div>
+    </section>
     <div class="card">
       <h2>Résultats</h2>
       <div id="results"><p class="small">Saisissez un code article ou scannez un code-barres.</p></div>
@@ -84,6 +137,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" onerror="this.dataset.loadError = 'true'"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<script src="stock-import.js"></script>
 <script>
   // Configuration Web Firebase fournie pour le projet gestion-de-stock-suivi.
   const firebaseConfig = {
@@ -99,6 +153,7 @@
   firebase.initializeApp(firebaseConfig);
   const auth = firebase.auth();
   const db = firebase.firestore();
+  window.initializeStockImport({ auth, db });
 
   const loginCard = document.getElementById('loginCard');
   const appCard = document.getElementById('appCard');
