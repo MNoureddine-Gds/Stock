@@ -6,9 +6,35 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function admin() {
+      return signedIn() && hasAdminRole(request.auth.uid);
+    }
+
+    function hasAdminRole(uid) {
+      let path = /databases/$(database)/documents/authorizedUsers/$(uid);
+      return exists(path) &&
+        get(path).data.role == 'admin';
+    }
+
     function importManager() {
       return signedIn() &&
         exists(/databases/$(database)/documents/stockImportManagers/$(request.auth.uid));
+    }
+
+    function finiteNumber(value) {
+      return value is number &&
+        !math.isNaN(value) &&
+        !math.isInfinite(value);
+    }
+
+    function validBalance(value) {
+      return finiteNumber(value) && value >= 0;
+    }
+
+    function validMovementQuantity(value) {
+      return finiteNumber(value) &&
+        value > 0 &&
+        math.abs(value * 100 - math.round(value * 100)) < 0.000001;
     }
 
     function validPosition() {
@@ -69,11 +95,345 @@ service cloud.firestore {
         getAfter(path).data.status == 'in_progress';
     }
 
+    function optionalPositionFieldMatches(snapshot, position, fieldName) {
+      return snapshot.keys().hasAny([fieldName]) == position.keys().hasAny([fieldName]) &&
+        snapshot.get(fieldName, null) == position.get(fieldName, null);
+    }
+
+    function validPositionSnapshot(snapshot, position) {
+      return snapshot is map &&
+        snapshot.keys().hasAll(['articlecode', 'storename', 'divisionname', 'address']) &&
+        snapshot.keys().hasOnly(['articlecode', 'storename', 'divisionname', 'address', 'designation', 'barcodes']) &&
+        snapshot.articlecode is string && snapshot.articlecode.size() > 0 &&
+        snapshot.storename is string && snapshot.storename.size() > 0 &&
+        snapshot.divisionname is string && snapshot.divisionname.size() > 0 &&
+        snapshot.address is string && snapshot.address.size() > 0 &&
+        position.articlecode == snapshot.articlecode &&
+        position.storename == snapshot.storename &&
+        position.divisionname == snapshot.divisionname &&
+        position.address == snapshot.address &&
+        optionalPositionFieldMatches(snapshot, position, 'designation') &&
+        optionalPositionFieldMatches(snapshot, position, 'barcodes') &&
+        (!snapshot.keys().hasAny(['designation']) || snapshot.designation is string) &&
+        (!snapshot.keys().hasAny(['barcodes']) ||
+          (snapshot.barcodes is string || snapshot.barcodes is list));
+    }
+
+    function validMovementMetadata(data, movementId) {
+      return data.keys().hasAll(['type', 'quantity', 'createdAt', 'actorUid']) &&
+        data.keys().hasOnly([
+          'type', 'quantity', 'createdAt', 'actorUid', 'actorEmail', 'note',
+          'fromPositionId', 'fromPosition', 'fromBefore', 'fromAfter',
+          'toPositionId', 'toPosition', 'toBefore', 'toAfter',
+          'reversesMovementId', 'reversesType'
+        ]) &&
+        data.createdAt is timestamp &&
+        data.createdAt == request.time &&
+        data.actorUid == request.auth.uid &&
+        validMovementQuantity(data.quantity) &&
+        (!data.keys().hasAny(['actorEmail']) || data.actorEmail is string) &&
+        (!data.keys().hasAny(['note']) ||
+          (data.note is string && data.note.size() <= 500)) &&
+        movementId is string && movementId.size() > 0;
+    }
+
+    function movementPositionUpdated(positionId, movementId, before, after, snapshot) {
+      let path = /databases/$(database)/documents/stockPositions/$(positionId);
+      let oldPosition = get(path).data;
+      let newPosition = getAfter(path).data;
+      return exists(path) &&
+        existsAfter(path) &&
+        validBalance(before) &&
+        validBalance(after) &&
+        oldPosition.currentqy == before &&
+        newPosition.currentqy == after &&
+        newPosition.lastMovementId == movementId &&
+        newPosition.diff(oldPosition).affectedKeys().hasOnly(['currentqy', 'lastMovementId']) &&
+        newPosition.diff(oldPosition).affectedKeys().hasAll(['currentqy', 'lastMovementId']) &&
+        validPositionSnapshot(snapshot, oldPosition);
+    }
+
+    function validEntry(data, movementId) {
+      let positionId = data.toPositionId;
+      let path = /databases/$(database)/documents/stockPositions/$(positionId);
+      let position = get(path).data;
+      return data.type == 'entry' &&
+        data.keys().hasAll([
+          'toPositionId', 'toPosition', 'toBefore', 'toAfter'
+        ]) &&
+        data.keys().hasOnly([
+          'type', 'quantity', 'createdAt', 'actorUid', 'actorEmail', 'note',
+          'toPositionId', 'toPosition', 'toBefore', 'toAfter'
+        ]) &&
+        data.toPositionId is string && data.toPositionId.size() > 0 &&
+        validBalance(data.toBefore) &&
+        validBalance(data.toAfter) &&
+        data.toBefore == position.currentqy &&
+        data.toAfter == data.toBefore + data.quantity &&
+        movementPositionUpdated(positionId, movementId, data.toBefore, data.toAfter, data.toPosition);
+    }
+
+    function validExit(data, movementId) {
+      let positionId = data.fromPositionId;
+      let path = /databases/$(database)/documents/stockPositions/$(positionId);
+      let position = get(path).data;
+      return data.type == 'exit' &&
+        data.keys().hasAll([
+          'fromPositionId', 'fromPosition', 'fromBefore', 'fromAfter'
+        ]) &&
+        data.keys().hasOnly([
+          'type', 'quantity', 'createdAt', 'actorUid', 'actorEmail', 'note',
+          'fromPositionId', 'fromPosition', 'fromBefore', 'fromAfter'
+        ]) &&
+        data.fromPositionId is string && data.fromPositionId.size() > 0 &&
+        validBalance(data.fromBefore) &&
+        validBalance(data.fromAfter) &&
+        data.quantity <= data.fromBefore &&
+        data.fromBefore == position.currentqy &&
+        data.fromAfter == data.fromBefore - data.quantity &&
+        movementPositionUpdated(positionId, movementId, data.fromBefore, data.fromAfter, data.fromPosition);
+    }
+
+    function validTransfer(data, movementId) {
+      let fromPath = /databases/$(database)/documents/stockPositions/$(data.fromPositionId);
+      let toPath = /databases/$(database)/documents/stockPositions/$(data.toPositionId);
+      let fromPosition = get(fromPath).data;
+      let toPosition = get(toPath).data;
+      return data.type == 'transfer' &&
+        data.keys().hasAll([
+          'fromPositionId', 'fromPosition', 'fromBefore', 'fromAfter',
+          'toPositionId', 'toPosition', 'toBefore', 'toAfter'
+        ]) &&
+        data.keys().hasOnly([
+          'type', 'quantity', 'createdAt', 'actorUid', 'actorEmail', 'note',
+          'fromPositionId', 'fromPosition', 'fromBefore', 'fromAfter',
+          'toPositionId', 'toPosition', 'toBefore', 'toAfter'
+        ]) &&
+        data.fromPositionId is string && data.fromPositionId.size() > 0 &&
+        data.toPositionId is string && data.toPositionId.size() > 0 &&
+        data.fromPositionId != data.toPositionId &&
+        data.fromPosition.articlecode == data.toPosition.articlecode &&
+        validBalance(data.fromBefore) &&
+        validBalance(data.fromAfter) &&
+        validBalance(data.toBefore) &&
+        validBalance(data.toAfter) &&
+        data.quantity <= data.fromBefore &&
+        data.fromBefore == fromPosition.currentqy &&
+        data.toBefore == toPosition.currentqy &&
+        data.fromAfter == data.fromBefore - data.quantity &&
+        data.toAfter == data.toBefore + data.quantity &&
+        movementPositionUpdated(data.fromPositionId, movementId, data.fromBefore, data.fromAfter, data.fromPosition) &&
+        movementPositionUpdated(data.toPositionId, movementId, data.toBefore, data.toAfter, data.toPosition);
+    }
+
+    function validReversalOfEntry(data, movementId, original) {
+      let positionId = data.fromPositionId;
+      let path = /databases/$(database)/documents/stockPositions/$(positionId);
+      let position = get(path).data;
+      return original.type == 'entry' &&
+        data.keys().hasAll([
+          'fromPositionId', 'fromPosition', 'fromBefore', 'fromAfter'
+        ]) &&
+        data.keys().hasOnly([
+          'type', 'quantity', 'createdAt', 'actorUid', 'actorEmail', 'note',
+          'reversesMovementId', 'reversesType',
+          'fromPositionId', 'fromPosition', 'fromBefore', 'fromAfter'
+        ]) &&
+        data.fromPositionId == original.toPositionId &&
+        data.fromPosition == original.toPosition &&
+        data.quantity == original.quantity &&
+        validBalance(data.fromBefore) &&
+        validBalance(data.fromAfter) &&
+        data.quantity <= data.fromBefore &&
+        data.fromBefore == position.currentqy &&
+        data.fromAfter == data.fromBefore - data.quantity &&
+        movementPositionUpdated(positionId, movementId, data.fromBefore, data.fromAfter, data.fromPosition);
+    }
+
+    function validReversalOfExit(data, movementId, original) {
+      let positionId = data.toPositionId;
+      let path = /databases/$(database)/documents/stockPositions/$(positionId);
+      let position = get(path).data;
+      return original.type == 'exit' &&
+        data.keys().hasAll([
+          'toPositionId', 'toPosition', 'toBefore', 'toAfter'
+        ]) &&
+        data.keys().hasOnly([
+          'type', 'quantity', 'createdAt', 'actorUid', 'actorEmail', 'note',
+          'reversesMovementId', 'reversesType',
+          'toPositionId', 'toPosition', 'toBefore', 'toAfter'
+        ]) &&
+        data.toPositionId == original.fromPositionId &&
+        data.toPosition == original.fromPosition &&
+        data.quantity == original.quantity &&
+        validBalance(data.toBefore) &&
+        validBalance(data.toAfter) &&
+        data.toBefore == position.currentqy &&
+        data.toAfter == data.toBefore + data.quantity &&
+        movementPositionUpdated(positionId, movementId, data.toBefore, data.toAfter, data.toPosition);
+    }
+
+    function validReversalOfTransfer(data, movementId, original) {
+      let fromPath = /databases/$(database)/documents/stockPositions/$(data.fromPositionId);
+      let toPath = /databases/$(database)/documents/stockPositions/$(data.toPositionId);
+      let fromPosition = get(fromPath).data;
+      let toPosition = get(toPath).data;
+      return original.type == 'transfer' &&
+        data.keys().hasAll([
+          'fromPositionId', 'fromPosition', 'fromBefore', 'fromAfter',
+          'toPositionId', 'toPosition', 'toBefore', 'toAfter'
+        ]) &&
+        data.keys().hasOnly([
+          'type', 'quantity', 'createdAt', 'actorUid', 'actorEmail', 'note',
+          'reversesMovementId', 'reversesType',
+          'fromPositionId', 'fromPosition', 'fromBefore', 'fromAfter',
+          'toPositionId', 'toPosition', 'toBefore', 'toAfter'
+        ]) &&
+        data.fromPositionId == original.toPositionId &&
+        data.fromPosition == original.toPosition &&
+        data.toPositionId == original.fromPositionId &&
+        data.toPosition == original.fromPosition &&
+        data.fromPositionId != data.toPositionId &&
+        data.fromPosition.articlecode == data.toPosition.articlecode &&
+        data.quantity == original.quantity &&
+        validBalance(data.fromBefore) &&
+        validBalance(data.fromAfter) &&
+        validBalance(data.toBefore) &&
+        validBalance(data.toAfter) &&
+        data.quantity <= data.fromBefore &&
+        data.fromBefore == fromPosition.currentqy &&
+        data.toBefore == toPosition.currentqy &&
+        data.fromAfter == data.fromBefore - data.quantity &&
+        data.toAfter == data.toBefore + data.quantity &&
+        movementPositionUpdated(data.fromPositionId, movementId, data.fromBefore, data.fromAfter, data.fromPosition) &&
+        movementPositionUpdated(data.toPositionId, movementId, data.toBefore, data.toAfter, data.toPosition);
+    }
+
+    function validReversal(data, movementId) {
+      let originalPath = /databases/$(database)/documents/stockMovements/$(data.reversesMovementId);
+      let original = get(originalPath).data;
+      return data.type == 'reversal' &&
+        data.keys().hasAll(['reversesMovementId', 'reversesType']) &&
+        data.reversesMovementId is string &&
+        data.reversesMovementId.size() > 0 &&
+        data.reversesType is string &&
+        movementId == 'reversal_' + data.reversesMovementId &&
+        exists(originalPath) &&
+        original.type in ['entry', 'exit', 'transfer'] &&
+        data.reversesType == original.type &&
+        data.quantity == original.quantity &&
+        ((original.type == 'entry' &&
+            data.keys().hasAll(['fromPositionId', 'fromPosition', 'fromBefore', 'fromAfter']) &&
+            data.fromPositionId is string &&
+          data.fromPositionId.size() > 0 &&
+          validReversalOfEntry(data, movementId, original)) ||
+        (original.type == 'exit' &&
+          data.keys().hasAll(['toPositionId', 'toPosition', 'toBefore', 'toAfter']) &&
+          data.toPositionId is string &&
+          data.toPositionId.size() > 0 &&
+          validReversalOfExit(data, movementId, original)) ||
+        (original.type == 'transfer' &&
+            data.keys().hasAll([
+              'fromPositionId', 'fromPosition', 'fromBefore', 'fromAfter',
+              'toPositionId', 'toPosition', 'toBefore', 'toAfter'
+            ]) &&
+            data.fromPositionId is string &&
+            data.toPositionId is string &&
+            data.fromPositionId.size() > 0 &&
+            data.toPositionId.size() > 0 &&
+            validReversalOfTransfer(data, movementId, original)));
+    }
+
+    function validMovement(data, movementId) {
+      return validMovementMetadata(data, movementId) &&
+        ((data.type == 'entry' &&
+            data.keys().hasAll(['toPositionId']) &&
+            data.toPositionId is string &&
+          data.toPositionId.size() > 0 &&
+          validEntry(data, movementId)) ||
+        (data.type == 'exit' &&
+          data.keys().hasAll(['fromPositionId']) &&
+          data.fromPositionId is string &&
+          data.fromPositionId.size() > 0 &&
+          validExit(data, movementId)) ||
+          (data.type == 'transfer' &&
+            data.keys().hasAll(['fromPositionId', 'toPositionId']) &&
+            data.fromPositionId is string &&
+            data.toPositionId is string &&
+            data.fromPositionId.size() > 0 &&
+            data.toPositionId.size() > 0 &&
+            validTransfer(data, movementId)) ||
+          (data.type == 'reversal' &&
+            data.keys().hasAll(['reversesMovementId']) &&
+            data.reversesMovementId is string &&
+            data.reversesMovementId.size() > 0 &&
+            validReversal(data, movementId)));
+    }
+
+    function positionUpdateMatchesMovement(positionId, oldPosition, newPosition) {
+      let movementId = newPosition.lastMovementId;
+      let path = /databases/$(database)/documents/stockMovements/$(movementId);
+      let movement = getAfter(path).data;
+      return newPosition.lastMovementId is string &&
+        existsAfter(path) &&
+        !exists(path) &&
+        movement.actorUid == request.auth.uid &&
+        movement.createdAt == request.time &&
+        (movement.type == 'entry' &&
+          movement.toPositionId == positionId &&
+          movement.toBefore == oldPosition.currentqy &&
+          movement.toAfter == newPosition.currentqy ||
+        movement.type == 'exit' &&
+          movement.fromPositionId == positionId &&
+          movement.fromBefore == oldPosition.currentqy &&
+          movement.fromAfter == newPosition.currentqy ||
+        movement.type == 'transfer' &&
+          (movement.fromPositionId == positionId &&
+            movement.fromBefore == oldPosition.currentqy &&
+            movement.fromAfter == newPosition.currentqy ||
+           movement.toPositionId == positionId &&
+            movement.toBefore == oldPosition.currentqy &&
+            movement.toAfter == newPosition.currentqy) ||
+        movement.type == 'reversal' &&
+          (movement.fromPositionId == positionId &&
+            movement.fromBefore == oldPosition.currentqy &&
+            movement.fromAfter == newPosition.currentqy ||
+           movement.toPositionId == positionId &&
+            movement.toBefore == oldPosition.currentqy &&
+            movement.toAfter == newPosition.currentqy));
+    }
+
+    function validPositionUpdate() {
+      let changes = request.resource.data.diff(resource.data).affectedKeys();
+      return admin() &&
+        changes.hasOnly(['currentqy', 'lastMovementId']) &&
+        changes.hasAll(['currentqy', 'lastMovementId']) &&
+        validBalance(request.resource.data.currentqy) &&
+        positionUpdateMatchesMovement(
+          documentId,
+          resource.data,
+          request.resource.data
+        );
+    }
+
+    match /authorizedUsers/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow list, create, update, delete: if false;
+    }
+
     match /stockPositions/{documentId} {
       allow get, list: if signedIn();
       allow create: if importManager() &&
         validPosition() &&
         runIsAvailable(request.resource.data.importBatchId);
+      allow update: if validPositionUpdate();
+      allow delete: if false;
+    }
+
+    match /stockMovements/{movementId} {
+      allow get, list: if admin();
+      allow create: if admin() &&
+        validMovement(request.resource.data, movementId);
       allow update, delete: if false;
     }
 

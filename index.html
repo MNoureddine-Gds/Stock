@@ -5,32 +5,86 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Consultation du stock – Magasin mécanique</title>
   <style>
-    :root { font-family: Arial, sans-serif; color: #172033; background: #f3f6fa; }
+    :root {
+      font-family: Arial, sans-serif;
+      color: var(--color-ink);
+      background: var(--color-canvas);
+      --color-ink: #172033;
+      --color-canvas: #f3f6fa;
+      --color-header: #163b65;
+      --color-primary: #1769aa;
+      --color-secondary: #e5edf5;
+      --color-surface: #ffffff;
+      --color-border: #dbe4ee;
+      --color-control-border: #758399;
+      --color-muted: #526176;
+      --color-label: #53657b;
+      --color-status: #eef4fa;
+      --color-error-background: #fff0f0;
+      --color-error-text: #922222;
+      --color-danger-background: #fce7e7;
+      --color-danger-text: #9b1c1c;
+      --color-success-background: #eaf8ef;
+      --color-success-text: #176536;
+      --radius-card: 12px;
+      --radius-control: 8px;
+      --radius-result: 10px;
+      --radius-field: 7px;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 18px;
+      --shadow-card: 0 2px 10px #152b4510;
+      --color-overlay: #17203388;
+      --focus-ring: var(--color-primary);
+      --size-touch: 44px;
+      --size-scanner-video: 360px;
+      --size-dialog-max: 620px;
+      --size-dialog-inset: 32px;
+      --size-field-min: 220px;
+      --size-search-min: 260px;
+      --size-summary-min: 160px;
+      --size-history-table-min: 960px;
+      --size-focus-ring: 3px;
+      --size-focus-offset: 2px;
+      --size-copy-max: 68ch;
+      --size-help-max: 72ch;
+      --font-size-movement-title: 1.4rem;
+      --font-size-kicker: .8rem;
+      --font-size-label: .88rem;
+      --font-size-table-heading: .82rem;
+      --line-height-copy: 1.5;
+      --line-height-compact: 1.45;
+      --letter-spacing-kicker: .06em;
+    }
     body { margin: 0; }
-    header { background: #163b65; color: white; padding: 18px 16px; }
+    header { background: var(--color-header); color: var(--color-surface); padding: 18px 16px; }
     header h1 { margin: 0; font-size: 1.35rem; }
     header p { margin: 7px 0 0; opacity: .9; }
     main { max-width: 820px; margin: 22px auto; padding: 0 14px 30px; }
-    .card { background: white; border-radius: 12px; padding: 18px; margin-bottom: 16px; box-shadow: 0 2px 10px #152b4510; }
+    .card { background: var(--color-surface); border-radius: var(--radius-card); padding: 18px; margin-bottom: 16px; box-shadow: var(--shadow-card); }
     h2 { font-size: 1.1rem; margin: 0 0 14px; }
     label { display: block; font-weight: 600; margin: 12px 0 6px; }
-    input { box-sizing: border-box; width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 1rem; }
-    button { border: 0; border-radius: 8px; padding: 12px 15px; margin: 10px 6px 0 0; cursor: pointer; font-weight: 700; font-size: .95rem; }
+    input { box-sizing: border-box; width: 100%; padding: 12px; border: 1px solid var(--color-control-border); border-radius: var(--radius-control); font-size: 1rem; }
+    button { min-height: var(--size-touch); border: 0; border-radius: var(--radius-control); padding: 12px 15px; margin: 10px 6px 0 0; cursor: pointer; font-weight: 700; font-size: .95rem; }
+    button:hover:not(:disabled) { filter: brightness(.95); }
+    button:active:not(:disabled) { filter: brightness(.88); }
     button:disabled { cursor: wait; opacity: .65; }
-    .primary { background: #1769aa; color: white; }
-    .secondary { background: #e5edf5; color: #163b65; }
-    .danger { background: #fce7e7; color: #9b1c1c; }
-    .status { margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: #eef4fa; overflow-wrap: anywhere; }
-    .error { background: #fff0f0; color: #922; }
-    .success { background: #eaf8ef; color: #176536; }
+    .primary { background: var(--color-primary); color: var(--color-surface); }
+    .secondary { background: var(--color-secondary); color: var(--color-header); }
+    .danger { background: var(--color-danger-background); color: var(--color-danger-text); }
+    .status { margin-top: 12px; padding: 10px 12px; border-radius: var(--radius-control); background: var(--color-status); overflow-wrap: anywhere; }
+    .error { background: var(--color-error-background); color: var(--color-error-text); }
+    .success { background: var(--color-success-background); color: var(--color-success-text); }
     .hidden { display: none !important; }
-    .result { border: 1px solid #dbe4ee; border-radius: 10px; padding: 14px; margin-top: 12px; }
+    .result { border: 1px solid var(--color-border); border-radius: var(--radius-result); padding: 14px; margin-top: 12px; }
     .result h3 { margin: 0 0 10px; font-size: 1.05rem; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
-    .field { background: #f7f9fc; border-radius: 7px; padding: 9px; overflow-wrap: anywhere; }
-    .field strong { display: block; font-size: .8rem; color: #53657b; margin-bottom: 4px; }
+    .field { background: var(--color-canvas); border-radius: var(--radius-field); padding: 9px; overflow-wrap: anywhere; }
+    .field strong { display: block; font-size: var(--font-size-kicker); color: var(--color-label); margin-bottom: var(--space-1); }
     #video { width: 100%; max-height: 360px; background: #111; border-radius: 8px; margin-top: 10px; }
-    .small { font-size: .88rem; color: #526176; }
+    .small { font-size: var(--font-size-label); color: var(--color-muted); }
     .barcode-visual { background: #fff; border-radius: 7px; padding: 10px; margin-top: 6px; text-align: center; overflow-x: auto; }
     .barcode-visual svg { max-width: 100%; height: auto; }
     .stock-import-actions { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
@@ -47,12 +101,92 @@
     .stock-import-history { padding-left: 22px; }
     .stock-import-history li { margin: 12px 0; }
     .stock-import-note { color: #526176; font-size: .9rem; }
+    .stock-workspace-tabs, .stock-movement-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+    .stock-workspace-tabs { align-items: center; justify-content: space-between; }
+    .stock-workspace-tabs [role="tablist"], .stock-movement-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+    .stock-workspace-tabs button, .stock-movement-tabs button { margin: 0; min-height: var(--size-touch); }
+    .stock-workspace-tabs [aria-selected="true"], .stock-movement-tabs [aria-selected="true"] { background: var(--color-header); color: var(--color-surface); }
+    .stock-workspace-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+    .stock-workspace-actions button { margin: 0; }
+    .stock-scan-area { margin-top: var(--space-3); }
+    .stock-scan-area #video { max-height: var(--size-scanner-video); }
+    .stock-movement-hero { background: var(--color-header); color: var(--color-surface); border-radius: var(--radius-card); padding: var(--space-5); margin-bottom: var(--space-4); }
+    .stock-movement-hero h2 { font-size: var(--font-size-movement-title); margin-bottom: var(--space-2); }
+    .stock-movement-hero p { margin: 0; line-height: var(--line-height-copy); opacity: .94; max-width: var(--size-copy-max); }
+    .stock-movement-kicker { color: var(--color-label); font-size: var(--font-size-kicker); font-weight: 700; letter-spacing: var(--letter-spacing-kicker); text-transform: uppercase; }
+    .stock-movement-hero .stock-movement-kicker { color: var(--color-surface); }
+    .stock-movement-tabs { border-bottom: 1px solid var(--color-border); padding-bottom: var(--space-3); margin-bottom: var(--space-4); }
+    .stock-movement-section { margin-top: var(--space-4); }
+    .stock-movement-section > h3 { margin: 0 0 var(--space-2); }
+    .stock-movement-help { color: var(--color-muted); line-height: var(--line-height-copy); max-width: var(--size-help-max); }
+    .stock-movement-search-row, .stock-movement-actions, .stock-movement-form-actions { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-2); }
+    .stock-movement-search-row label { flex: 1 1 var(--size-search-min); margin-bottom: 0; }
+    .stock-movement-search-row button, .stock-movement-actions button, .stock-movement-form-actions button { margin: 0; }
+    .stock-movement-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(var(--size-field-min), 1fr)); gap: var(--space-3); margin-top: var(--space-4); }
+    .stock-movement-fields label { margin: 0; }
+    .stock-movement-fields input, .stock-movement-fields select, .stock-movement-fields textarea,
+    .stock-movement-filters input, .stock-movement-filters select {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: var(--size-touch);
+      padding: var(--space-3);
+      border: 1px solid var(--color-control-border);
+      border-radius: var(--radius-control);
+      background: var(--color-surface);
+      color: var(--color-ink);
+      font: inherit;
+    }
+    .stock-movement-fields textarea { min-height: 104px; resize: vertical; }
+    input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible {
+      outline: var(--size-focus-ring) solid var(--focus-ring);
+      outline-offset: var(--size-focus-offset);
+      box-shadow: none;
+    }
+    .stock-movement-selections { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-3); margin-top: var(--space-4); }
+    .stock-movement-selection { border: 1px solid var(--color-border); border-radius: var(--radius-result); background: var(--color-canvas); padding: var(--space-3); overflow-wrap: anywhere; }
+    .stock-movement-selection p { margin: var(--space-1) 0; }
+    .stock-movement-position-result { background: var(--color-surface); }
+    .stock-movement-actions { justify-content: flex-end; }
+    .stock-movement-empty { margin: 0; padding: var(--space-4); border: 1px dashed var(--color-control-border); border-radius: var(--radius-result); color: var(--color-muted); background: var(--color-canvas); }
+    .stock-movement-preview { border: 1px solid var(--color-border); border-radius: var(--radius-card); padding: var(--space-4); margin-top: var(--space-4); background: var(--color-canvas); }
+    .stock-movement-preview h3 { margin: var(--space-1) 0 var(--space-3); }
+    .stock-movement-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(var(--size-summary-min), 1fr)); gap: var(--space-2); margin: var(--space-3) 0; }
+    .stock-movement-summary > div { display: grid; gap: var(--space-1); padding: var(--space-3); border-radius: var(--radius-field); background: var(--color-surface); overflow-wrap: anywhere; }
+    .stock-movement-summary span, .stock-movement-balance span { color: var(--color-muted); font-size: var(--font-size-label); }
+    .stock-movement-preview-locations { display: grid; grid-template-columns: repeat(auto-fit, minmax(var(--size-field-min), 1fr)); gap: var(--space-3); }
+    .stock-movement-preview-location { padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-result); background: var(--color-surface); overflow-wrap: anywhere; }
+    .stock-movement-preview-location h4 { margin: 0 0 var(--space-2); }
+    .stock-movement-preview-location p { line-height: var(--line-height-compact); }
+    .stock-movement-balance { display: grid; grid-template-columns: 1fr auto; gap: var(--space-2); align-items: center; }
+    .stock-movement-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(var(--size-field-min), 1fr)); gap: var(--space-3); align-items: end; }
+    .stock-movement-filters label { margin: 0; }
+    .stock-movement-table-wrap { overflow-x: auto; margin-top: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-result); }
+    .stock-movement-table { width: 100%; min-width: var(--size-history-table-min); border-collapse: collapse; background: var(--color-surface); }
+    .stock-movement-table th, .stock-movement-table td { padding: var(--space-3); border-bottom: 1px solid var(--color-border); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+    .stock-movement-table th { color: var(--color-label); font-size: var(--font-size-table-heading); }
+    .stock-movement-actor { display: block; margin-top: var(--space-1); }
+    .stock-movement-pagination { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-3); }
+    .stock-movement-pagination button { margin: 0; }
+    .stock-movement-dialog { width: min(var(--size-dialog-max), calc(100vw - var(--size-dialog-inset))); max-height: calc(100vh - var(--size-dialog-inset)); overflow: auto; border: 0; border-radius: var(--radius-card); padding: var(--space-5); color: var(--color-ink); box-shadow: var(--shadow-card); }
+    .stock-movement-dialog::backdrop { background: var(--color-overlay); }
+    .stock-movement-dialog h2 { margin-bottom: var(--space-2); }
+    .stock-movement-dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-4); }
+    .stock-movement-dialog-actions button { margin: 0; }
+    @media (max-width: 600px) {
+      .stock-workspace-tabs { align-items: stretch; }
+      .stock-workspace-tabs [role="tablist"] { width: 100%; }
+      .stock-workspace-tabs [role="tablist"] button { flex: 1 1 auto; }
+      .stock-workspace-actions { width: 100%; justify-content: space-between; }
+      .stock-movement-hero { padding: var(--space-4); }
+      .stock-movement-search-row button, .stock-movement-form-actions button { flex: 1 1 100%; }
+      .stock-movement-dialog { padding: var(--space-4); }
+    }
   </style>
 </head>
 <body>
 <header>
   <h1>Consultation du stock – Magasin mécanique</h1>
-  <p>Recherche par code article ou code-barres</p>
+  <p>Consultez les positions et suivez les mouvements du stock</p>
 </header>
 <main>
   <section id="loginCard" class="card">
@@ -70,22 +204,34 @@
 
   <section id="appCard" class="hidden">
     <div class="card">
-      <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
-        <h2 style="margin:0">Rechercher un article</h2>
-        <button id="logoutBtn" class="secondary" type="button">Déconnexion</button>
+      <div class="stock-workspace-tabs">
+        <div id="stockWorkspaceTabs" role="tablist" aria-label="Fonctions de stock">
+          <button id="stockSearchTab" class="secondary" type="button" role="tab" aria-selected="true" aria-controls="stockSearchPanel">Stock</button>
+          <button id="stockMovementsTab" class="secondary hidden" type="button" role="tab" aria-selected="false" aria-controls="stockMovementsPanel">Mouvements</button>
+        </div>
+        <div class="stock-workspace-actions">
+          <button id="logoutBtn" class="secondary" type="button">Déconnexion</button>
+        </div>
       </div>
+      <div id="stockMovementAccessStatus" class="status hidden" role="status" aria-live="polite"></div>
+      <div class="stock-scan-area">
+        <button id="stopScanBtn" class="danger hidden" type="button">Arrêter le scan</button>
+        <video id="video" class="hidden" playsinline muted></video>
+      </div>
+    </div>
+    <section id="stockSearchPanel" role="tabpanel" aria-labelledby="stockSearchTab">
+      <div class="card">
+      <h2>Rechercher un article</h2>
       <label for="searchInput">Code article ou code-barres</label>
       <input id="searchInput" type="text" placeholder="Ex. 400012586" autocomplete="off">
       <button id="searchBtn" class="primary" type="button">Rechercher</button>
       <button id="scanBtn" class="secondary" type="button">Scanner avec la caméra</button>
       <button id="exportBtn" class="secondary" type="button">Exporter la liste des articles</button>
-      <button id="stopScanBtn" class="danger hidden" type="button">Arrêter le scan</button>
-      <video id="video" class="hidden" playsinline muted></video>
       <p class="small">Le scan par caméra nécessite un navigateur compatible et une page HTTPS (ou localhost).</p>
       <div id="searchStatus" class="status hidden" role="status"></div>
       <div id="exportStatus" class="status hidden" role="status" aria-live="polite"></div>
       <div id="stockImportAccessStatus" class="status hidden" role="status" aria-live="polite"></div>
-    </div>
+      </div>
     <section id="stockImportPanel" class="card hidden" aria-labelledby="stockImportHeading">
       <h2 id="stockImportHeading">Initialiser le stock depuis Excel</h2>
       <p class="stock-import-note">Le fichier reste sur cet appareil. Vérifiez les lignes avant de confirmer leur ajout. Les positions existantes ne sont jamais remplacées.</p>
@@ -128,8 +274,140 @@
       <h2>Résultats</h2>
       <div id="results"><p class="small">Saisissez un code article ou scannez un code-barres.</p></div>
     </div>
+    </section>
+    <section id="stockMovementsPanel" class="hidden" role="tabpanel" aria-labelledby="stockMovementsTab">
+      <header class="stock-movement-hero">
+        <span class="stock-movement-kicker">Gestion du stock</span>
+        <h2>Mouvements de stock</h2>
+        <p>Enregistrez une entrée, une sortie ou un transfert. Chaque validation garde une trace permanente et actualise les positions ensemble.</p>
+      </header>
+      <div class="card">
+        <div id="stockMovementTabs" class="stock-movement-tabs" role="tablist" aria-label="Vues des mouvements">
+          <button id="stockMovementNewTab" class="secondary" type="button" role="tab" aria-selected="true" aria-controls="stockMovementNewPanel">Nouvelle opération</button>
+          <button id="stockMovementHistoryTab" class="secondary" type="button" role="tab" aria-selected="false" aria-controls="stockMovementHistoryPanel">Historique</button>
+        </div>
+        <section id="stockMovementNewPanel" role="tabpanel" aria-labelledby="stockMovementNewTab">
+          <h3>Préparer une opération</h3>
+          <p class="stock-movement-help">Choisissez une position existante, vérifiez les quantités avant et après, puis confirmez. Rien n’est écrit avant votre confirmation.</p>
+          <form id="stockMovementPositionSearch">
+            <div class="stock-movement-search-row">
+              <label for="stockMovementSearchInput">Code article, code barre ou désignation
+                <input id="stockMovementSearchInput" type="search" autocomplete="off">
+              </label>
+              <button class="primary" type="submit">Rechercher une position</button>
+              <button id="stockMovementScanBtn" class="secondary" type="button">Scanner un code barre</button>
+            </div>
+          </form>
+          <p class="small">La caméra nécessite un navigateur compatible et une page HTTPS ou localhost.</p>
+          <div id="stockMovementPositionStatus" class="status hidden" role="status" aria-live="polite"></div>
+          <div id="stockMovementPositionResults" aria-live="polite"></div>
+          <div class="stock-movement-selections">
+            <section id="stockMovementFromSelection" class="stock-movement-selection" aria-label="Position source"></section>
+            <section id="stockMovementToSelection" class="stock-movement-selection" aria-label="Position destination"></section>
+          </div>
+          <form id="stockMovementForm">
+            <div class="stock-movement-fields">
+              <label for="stockMovementType">Type d’opération
+                <select id="stockMovementType" required>
+                  <option value="entry">Entrée</option>
+                  <option value="exit">Sortie</option>
+                  <option value="transfer">Transfert</option>
+                </select>
+              </label>
+              <label for="stockMovementQuantity">Quantité
+                <input id="stockMovementQuantity" type="number" min="0.01" step="0.01" inputmode="decimal" required>
+              </label>
+              <label for="stockMovementNote">Note facultative
+                <textarea id="stockMovementNote" maxlength="500" rows="3"></textarea>
+              </label>
+            </div>
+            <div class="stock-movement-form-actions">
+              <button id="stockMovementPreviewBtn" class="primary" type="button">Afficher l’aperçu</button>
+            </div>
+          </form>
+          <div id="stockMovementStatus" class="status hidden" role="status" aria-live="polite"></div>
+          <section id="stockMovementPreview" class="stock-movement-preview hidden" aria-labelledby="stockMovementPreviewHeading">
+            <h3 id="stockMovementPreviewHeading" class="hidden">Aperçu de l’opération</h3>
+            <div id="stockMovementPreviewContent" aria-live="polite"></div>
+            <div class="stock-movement-form-actions">
+              <button id="stockMovementConfirmBtn" class="primary" type="button" disabled>Confirmer l’opération</button>
+            </div>
+          </section>
+        </section>
+        <section id="stockMovementHistoryPanel" class="hidden" role="tabpanel" aria-labelledby="stockMovementHistoryTab">
+          <h3>Historique permanent</h3>
+          <p class="stock-movement-help">Les mouvements sont conservés sans expiration. Les corrections créent une opération inverse, sans modifier l’historique d’origine.</p>
+          <form id="stockMovementHistoryFilters" class="stock-movement-filters">
+            <label for="stockMovementHistoryType">Type
+              <select id="stockMovementHistoryType">
+                <option value="">Tous les types</option>
+                <option value="entry">Entrée</option>
+                <option value="exit">Sortie</option>
+                <option value="transfer">Transfert</option>
+                <option value="reversal">Correction</option>
+              </select>
+            </label>
+            <label for="stockMovementHistoryStart">Date de début
+              <input id="stockMovementHistoryStart" type="date">
+            </label>
+            <label for="stockMovementHistoryEnd">Date de fin
+              <input id="stockMovementHistoryEnd" type="date">
+            </label>
+            <label for="stockMovementHistoryArticle">Code article exact
+              <input id="stockMovementHistoryArticle" type="text">
+            </label>
+            <label for="stockMovementHistoryBarcode">Code barre exact
+              <input id="stockMovementHistoryBarcode" type="text">
+            </label>
+            <label for="stockMovementHistoryDesignation">Fragment de désignation
+              <input id="stockMovementHistoryDesignation" type="search">
+            </label>
+            <div class="stock-movement-form-actions">
+              <button class="primary" type="submit">Appliquer les filtres</button>
+              <button id="stockMovementHistoryClear" class="secondary" type="button">Effacer les filtres</button>
+            </div>
+          </form>
+          <div id="stockMovementHistoryStatus" class="status hidden" role="status" aria-live="polite"></div>
+          <div class="stock-movement-table-wrap">
+            <table class="stock-movement-table">
+              <thead>
+                <tr>
+                  <th scope="col">Date et auteur</th>
+                  <th scope="col">Type</th>
+                  <th scope="col">Article</th>
+                  <th scope="col">Source</th>
+                  <th scope="col">Destination</th>
+                  <th scope="col">Quantité</th>
+                  <th scope="col">Note</th>
+                  <th scope="col">Correction</th>
+                </tr>
+              </thead>
+              <tbody id="stockMovementHistoryRows">
+                <tr><td colspan="8"><p class="stock-movement-empty">Les mouvements apparaîtront ici.</p></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="stock-movement-pagination">
+            <button id="stockMovementHistoryPrevious" class="secondary hidden" type="button">Page précédente</button>
+            <span id="stockMovementHistoryPage" class="small"></span>
+            <button id="stockMovementHistoryNext" class="secondary hidden" type="button">Page suivante</button>
+          </div>
+        </section>
+      </div>
+    </section>
   </section>
 </main>
+
+<dialog id="stockMovementReversalDialog" class="stock-movement-dialog" aria-labelledby="stockMovementReversalTitle" aria-describedby="stockMovementReversalDescription">
+  <h2 id="stockMovementReversalTitle">Confirmer une correction</h2>
+  <p id="stockMovementReversalDescription">La correction crée un nouveau mouvement inverse. Le mouvement d’origine reste inchangé.</p>
+  <div id="stockMovementReversalPreview"></div>
+  <div id="stockMovementReversalStatus" class="status hidden" role="status" aria-live="polite"></div>
+  <div class="stock-movement-dialog-actions">
+    <button id="stockMovementReversalCancel" class="secondary" type="button">Annuler</button>
+    <button id="stockMovementReversalConfirm" class="primary" type="button" disabled>Confirmer la correction</button>
+  </div>
+</dialog>
 
 <!-- Firebase compat SDK: permet d'utiliser firebase.initializeApp / firebase.auth / firebase.firestore -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -138,6 +416,7 @@
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" onerror="this.dataset.loadError = 'true'"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="stock-import.js"></script>
+<script src="stock-movements.js"></script>
 <script>
   // Configuration Web Firebase fournie pour le projet gestion-de-stock-suivi.
   const firebaseConfig = {
@@ -154,6 +433,16 @@
   const auth = firebase.auth();
   const db = firebase.firestore();
   window.initializeStockImport({ auth, db });
+  window.initializeStockMovements({
+    auth,
+    db,
+    stopScanner,
+    startScanner: (onDetected) => startScanner(
+      onDetected,
+      document.getElementById('stockMovementPositionStatus'),
+      document.getElementById('stockMovementScanBtn')
+    )
+  });
 
   const loginCard = document.getElementById('loginCard');
   const appCard = document.getElementById('appCard');
@@ -170,6 +459,7 @@
   let exportInProgress = false;
   let exportCancelled = false;
   let activeExportUid = null;
+  let activeScanButton = null;
 
   function showStatus(el, message, isError = false, isSuccess = false) {
     el.textContent = message;
@@ -584,9 +874,11 @@
   document.getElementById('scanBtn').addEventListener('click', startScanner);
   document.getElementById('stopScanBtn').addEventListener('click', stopScanner);
 
-  async function startScanner() {
+  async function startScanner(onDetected, statusTarget, triggerButton) {
+    const scanStatus = statusTarget || searchStatus;
+    activeScanButton = triggerButton || document.getElementById('scanBtn');
     if (!('BarcodeDetector' in window)) {
-      showStatus(searchStatus, 'Ce navigateur ne prend pas en charge le scan natif. Utilisez la saisie manuelle ou essayez Chrome sur Android.', true);
+      showStatus(scanStatus, 'Ce navigateur ne prend pas en charge le scan natif. Utilisez la saisie manuelle ou essayez Chrome sur Android.', true);
       return;
     }
     try {
@@ -595,19 +887,23 @@
       video.srcObject = scanStream;
       video.classList.remove('hidden');
       document.getElementById('stopScanBtn').classList.remove('hidden');
-      document.getElementById('scanBtn').classList.add('hidden');
+      activeScanButton.classList.add('hidden');
       await video.play();
       scanActive = true;
-      showStatus(searchStatus, 'Caméra active : placez le code-barres dans le cadre.');
+      showStatus(scanStatus, 'Caméra active : placez le code-barres dans le cadre.');
       const scanFrame = async () => {
         if (!scanActive) return;
         try {
           const codes = await detector.detect(video);
           if (codes.length && codes[0].rawValue) {
             const scanned = codes[0].rawValue.trim();
-            searchInput.value = scanned;
             stopScanner();
-            await searchStock(scanned);
+            if (typeof onDetected === 'function') {
+              await onDetected(scanned);
+            } else {
+              searchInput.value = scanned;
+              await searchStock(scanned);
+            }
             return;
           }
         } catch (e) { console.warn('Lecture du code-barres:', e); }
@@ -616,7 +912,7 @@
       requestAnimationFrame(scanFrame);
     } catch (error) {
       stopScanner();
-      showStatus(searchStatus, 'Impossible d’ouvrir la caméra. Autorisez son accès et ouvrez la page en HTTPS.', true);
+      showStatus(scanStatus, 'Impossible d’ouvrir la caméra. Autorisez son accès et ouvrez la page en HTTPS.', true);
     }
   }
 
@@ -630,7 +926,8 @@
     video.srcObject = null;
     video.classList.add('hidden');
     document.getElementById('stopScanBtn').classList.add('hidden');
-    document.getElementById('scanBtn').classList.remove('hidden');
+    if (activeScanButton) activeScanButton.classList.remove('hidden');
+    activeScanButton = null;
   }
 </script>
 </body>
