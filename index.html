@@ -980,30 +980,39 @@
       groups.get(key).positions.push(position);
     });
 
-    const rows = [...groups.values()].map(group => {
-      const barcodes = new Set();
-      const addresses = new Set();
-      let total = 0;
-      let complete = true;
-      group.positions.forEach(position => {
-        const designation = positionDesignation(position);
-        if (!group.designation && designation) group.designation = designation;
-        positionBarcodes(position).forEach(barcode => barcodes.add(barcode));
-        addresses.add(positionAddress(position) || 'Adresse non renseignée');
-        const quantity = currentQuantityValue(position);
-        if (!isValidCurrentQuantity(quantity)) complete = false;
-        else total += Number(quantity);
+    const rows = [...groups.values()].flatMap(group => {
+      const addresses = new Set(group.positions.map(position =>
+        positionAddress(position) || 'Adresse non renseignée'
+      ));
+      const positionGroups = addresses.size > 1
+        ? [group.positions]
+        : group.positions.map(position => [position]);
+
+      return positionGroups.map(positions => {
+        const barcodes = new Set();
+        const locations = new Set();
+        let designation = '';
+        let total = 0;
+        let complete = true;
+        positions.forEach(position => {
+          if (!designation) designation = positionDesignation(position);
+          positionBarcodes(position).forEach(barcode => barcodes.add(barcode));
+          locations.add(positionAddress(position) || 'Adresse non renseignée');
+          const quantity = currentQuantityValue(position);
+          if (!isValidCurrentQuantity(quantity)) complete = false;
+          else total += Number(quantity);
+        });
+        return {
+          articleCode: group.articleCode === null ? '' : String(group.articleCode),
+          designation: designation || '—',
+          barcodes: [...barcodes].join(', ') || '—',
+          locations: [...locations].join(' + '),
+          currentStock: complete && Number.isFinite(total)
+            ? String(Number.isInteger(total) ? total : Math.round(total * 100) / 100)
+            : 'Incomplet',
+          firstPositionId: positions[0].id
+        };
       });
-      return {
-        articleCode: group.articleCode === null ? '' : String(group.articleCode),
-        designation: group.designation || '—',
-        barcodes: [...barcodes].join(', ') || '—',
-        locations: [...addresses].join(' + '),
-        currentStock: complete && Number.isFinite(total)
-          ? String(Number.isInteger(total) ? total : Math.round(total * 100) / 100)
-          : 'Incomplet',
-        firstPositionId: group.positions[0].id
-      };
     });
 
     return rows.sort((a, b) => {
