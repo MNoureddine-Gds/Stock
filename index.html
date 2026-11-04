@@ -46,6 +46,7 @@
       --size-search-min: 260px;
       --size-summary-min: 160px;
       --size-history-table-min: 960px;
+      --size-search-table-min: 760px;
       --size-focus-ring: 3px;
       --size-focus-offset: 2px;
       --size-copy-max: 68ch;
@@ -82,13 +83,20 @@
     .result h3 { margin: 0 0 10px; font-size: 1.05rem; }
     .search-pagination { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-3); }
     .search-pagination button { margin: 0; }
+    .search-table-wrap { overflow-x: auto; margin-top: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-result); }
+    .search-table-wrap:focus-visible { outline: var(--size-focus-ring) solid var(--focus-ring); outline-offset: var(--size-focus-offset); }
+    .search-table { width: 100%; min-width: var(--size-search-table-min); border-collapse: collapse; background: var(--color-surface); }
+    .search-table th, .search-table td { padding: var(--space-3); border-bottom: 1px solid var(--color-border); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+    .search-table th { color: var(--color-label); font-size: var(--font-size-table-heading); }
+    .search-table th:last-child, .search-table td:last-child { white-space: nowrap; }
+    .search-table tbody tr:last-child td { border-bottom: 0; }
+    .search-empty { margin: 0; padding: var(--space-4); border: 1px dashed var(--color-control-border); border-radius: var(--radius-result); color: var(--color-muted); background: var(--color-canvas); }
+    .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
     .field { background: var(--color-canvas); border-radius: var(--radius-field); padding: 9px; overflow-wrap: anywhere; }
     .field strong { display: block; font-size: var(--font-size-kicker); color: var(--color-label); margin-bottom: var(--space-1); }
     #video { width: 100%; max-height: 360px; background: #111; border-radius: 8px; margin-top: 10px; }
     .small { font-size: var(--font-size-label); color: var(--color-muted); }
-    .barcode-visual { background: #fff; border-radius: 7px; padding: 10px; margin-top: 6px; text-align: center; overflow-x: auto; }
-    .barcode-visual svg { max-width: 100%; height: auto; }
     .stock-import-actions { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
     .stock-import-actions label { flex: 1 1 260px; margin-bottom: 0; }
     .stock-import-actions button { margin-right: 0; }
@@ -416,7 +424,6 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" onerror="this.dataset.loadError = 'true'"></script>
-<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="stock-import.js"></script>
 <script src="stock-movements.js"></script>
 <script>
@@ -476,6 +483,9 @@
     if (isSuccess) el.classList.add('success');
   }
   function hideStatus(el) { el.classList.add('hidden'); }
+  function showNoSearchResults(message) {
+    results.innerHTML = '<p class="search-empty">' + escapeHtml(message) + '</p>';
+  }
 
   document.getElementById('loginForm').addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -549,17 +559,50 @@
   }
   function positionDesignation(data) {
     for (const name of ['designation', 'name', 'articleName', 'description']) {
-      if (typeof data[name] === 'string' && data[name].trim()) return data[name];
+      if (typeof data[name] === 'string' && data[name].trim()) return data[name].trim();
     }
     return '';
   }
-  function field(data, names) {
-    for (const name of names) {
-      if (data[name] !== undefined && data[name] !== null && data[name] !== '') return data[name];
-    }
-    return '—';
+  function compareDocumentIds(left, right) {
+    return left < right ? -1 : left > right ? 1 : 0;
   }
-
+  function firstValue(data, names) {
+    for (const name of names) {
+      const value = data[name];
+      if (value !== undefined && value !== null && String(value).trim() !== '') return value;
+    }
+    return null;
+  }
+  function articleCode(data) {
+    const value = data.articlecode;
+    return value !== undefined && value !== null && String(value).trim() !== '' ? value : null;
+  }
+  function hasDesignationMatch(data, query) {
+    return ['designation', 'name', 'articleName', 'description'].some(name =>
+      normalizeSearch(data[name]).includes(query)
+    );
+  }
+  function isValidCurrentQuantity(value) {
+    if (typeof value === 'number') {
+      return Number.isFinite(value) && value >= 0 &&
+        (Number.isInteger(value) || /^\d+\.\d{1,2}$/.test(String(value)));
+    }
+    if (typeof value !== 'string' || !/^-?\d+(\.\d{1,2})?$/.test(value)) return false;
+    const significantDigits = value.replace(/^-/, '').replace('.', '').replace(/^0+/, '').length || 1;
+    return Number.isFinite(Number(value)) && Number(value) >= 0 && significantDigits <= 15;
+  }
+  function positionBarcodes(data) {
+    const value = firstValue(data, ['barcodes', 'barcode', 'codebarre']);
+    const values = Array.isArray(value) ? value : value === null ? [] : [value];
+    return values.map(item => String(item).replace(/\*/g, '').trim()).filter(Boolean);
+  }
+  function positionLocation(data) {
+    return [
+      firstValue(data, ['storename', 'storecode', 'magasin']),
+      firstValue(data, ['divisionname', 'divisioncode', 'division']),
+      firstValue(data, ['address', 'emplacement', 'location'])
+    ].map(value => value === null ? '' : String(value).trim());
+  }
   const exportPageSize = 500;
   const exportSheetRowLimit = 1048576;
   const exportHeaders = [
@@ -792,15 +835,12 @@
 
   async function queryBarcode(code) {
     const found = new Map();
-    // Supporte les deux formats courants de barcodes: texte simple ou tableau de chaînes.
-    try {
-      const snap = await db.collection('stockPositions').where('barcodes', '==', code).get();
-      snap.forEach(doc => found.set(doc.id, { id: doc.id, ...doc.data() }));
-    } catch (e) { console.warn('Recherche barcodes == code:', e); }
-    try {
-      const snap = await db.collection('stockPositions').where('barcodes', 'array-contains', code).get();
-      snap.forEach(doc => found.set(doc.id, { id: doc.id, ...doc.data() }));
-    } catch (e) { console.warn('Recherche barcodes array-contains:', e); }
+    const collection = db.collection('stockPositions');
+    const snapshots = await Promise.all([
+      collection.where('barcodes', '==', code).get(),
+      collection.where('barcodes', 'array-contains', code).get()
+    ]);
+    snapshots.forEach(snapshot => snapshot.forEach(doc => found.set(doc.id, { id: doc.id, ...doc.data() })));
     return [...found.values()];
   }
 
@@ -838,11 +878,14 @@
         const barcodeDocs = await queryBarcode(code);
         if (!isCurrentSearch()) return;
         if (barcodeDocs.length) {
-          const articleCodes = [...new Set(barcodeDocs.map(d => normalize(d.articlecode)).filter(Boolean))];
           barcodeDocs.forEach(d => found.set(d.id, d));
-          // Une référence peut avoir plusieurs positions (magasin/division).
-          for (const articleCode of articleCodes) {
-            const positions = await db.collection('stockPositions').where('articlecode', '==', articleCode).get();
+          const articleCodes = new Map();
+          barcodeDocs.forEach(position => {
+            const value = articleCode(position);
+            if (value !== null) articleCodes.set(JSON.stringify([typeof value, String(value)]), value);
+          });
+          for (const value of articleCodes.values()) {
+            const positions = await db.collection('stockPositions').where('articlecode', '==', value).get();
             if (!isCurrentSearch()) return;
             positions.forEach(doc => found.set(doc.id, { id: doc.id, ...doc.data() }));
           }
@@ -853,7 +896,7 @@
         const designationQuery = normalizeSearch(code);
         if (designationQuery.length < 3) {
           showStatus(searchStatus, 'Aucun code article ou code-barres exact. Pour chercher par désignation, saisissez au moins trois caractères.', true);
-          results.innerHTML = '<p>Aucun résultat.</p>';
+          showNoSearchResults('Aucun article affiché. Saisissez au moins trois caractères pour chercher par désignation.');
           return;
         }
 
@@ -861,6 +904,9 @@
         showStatus(searchStatus, 'Recherche par désignation en cours…');
         let lastDocument = null;
         let positionsRead = 0;
+        const allPositions = [];
+        const matchingArticleCodes = new Set();
+        const matchingPositionsWithoutCode = new Set();
         while (true) {
           let query = db.collection('stockPositions')
             .orderBy(firebase.firestore.FieldPath.documentId())
@@ -871,26 +917,35 @@
           snapshot.forEach(doc => {
             positionsRead += 1;
             const data = doc.data();
-            if (normalizeSearch(positionDesignation(data)).includes(designationQuery)) {
-              found.set(doc.id, { id: doc.id, ...data });
+            const position = { id: doc.id, ...data };
+            allPositions.push(position);
+            if (hasDesignationMatch(data, designationQuery)) {
+              const value = articleCode(data);
+              if (value === null) matchingPositionsWithoutCode.add(doc.id);
+              else matchingArticleCodes.add(JSON.stringify([typeof value, String(value)]));
             }
           });
           showStatus(searchStatus, 'Recherche par désignation : ' + positionsRead + ' position(s) vérifiée(s)…');
           if (snapshot.size < searchPageReadSize) break;
           lastDocument = snapshot.docs[snapshot.docs.length - 1];
         }
+        allPositions.forEach(position => {
+          const value = articleCode(position);
+          if (value === null ? matchingPositionsWithoutCode.has(position.id) :
+            matchingArticleCodes.has(JSON.stringify([typeof value, String(value)]))) {
+            found.set(position.id, position);
+          }
+        });
       }
 
       if (!isCurrentSearch()) return;
       if (found.size === 0) {
-        showStatus(searchStatus, 'Aucun résultat trouvé pour « ' + code + ' ». Vérifiez le texte saisi.', true);
-        results.innerHTML = '<p>Aucun résultat.</p>';
+        showStatus(searchStatus, 'Aucun résultat trouvé pour « ' + code + ' ». Vérifiez le texte saisi.');
+        showNoSearchResults('Aucun article trouvé. Vérifiez le code saisi ou essayez un autre fragment de désignation.');
         return;
       }
 
-      searchResults = [...found.values()].sort((a, b) =>
-        normalize(field(a, ['storename', 'storecode'])).localeCompare(normalize(field(b, ['storename', 'storecode'])), 'fr')
-      );
+      searchResults = buildArticleRows([...found.values()]);
       searchResultPage = 0;
       renderSearchResults();
     } catch (error) {
@@ -903,42 +958,74 @@
     }
   }
 
+  function buildArticleRows(positions) {
+    const orderedPositions = positions.sort((a, b) => compareDocumentIds(a.id, b.id));
+    const groups = new Map();
+    orderedPositions.forEach(position => {
+      const code = articleCode(position);
+      const key = code === null
+        ? JSON.stringify(['position', position.id])
+        : JSON.stringify([typeof code, String(code)]);
+      if (!groups.has(key)) groups.set(key, { articleCode: code, positions: [] });
+      groups.get(key).positions.push(position);
+    });
+
+    const rows = [...groups.values()].map(group => {
+      const barcodes = new Set();
+      const locations = new Map();
+      let total = 0;
+      let complete = true;
+      group.positions.forEach(position => {
+        const designation = positionDesignation(position);
+        if (!group.designation && designation) group.designation = designation;
+        positionBarcodes(position).forEach(barcode => barcodes.add(barcode));
+        const location = positionLocation(position);
+        const locationKey = JSON.stringify(location);
+        if (!locations.has(locationKey)) {
+          locations.set(locationKey, location.filter(Boolean).join(' / ') || 'Localisation non renseignée');
+        }
+        const quantity = firstValue(position, ['currentqy', 'currentqty', 'currentQuantity', 'quantity', 'stockactuel']);
+        if (!isValidCurrentQuantity(quantity)) complete = false;
+        else total += Number(quantity);
+      });
+      return {
+        articleCode: group.articleCode === null ? '' : String(group.articleCode),
+        designation: group.designation || '—',
+        barcodes: [...barcodes].join(', ') || '—',
+        locations: [...locations.values()].join('; '),
+        currentStock: complete && Number.isFinite(total)
+          ? String(Number.isInteger(total) ? total : Math.round(total * 100) / 100)
+          : 'Incomplet',
+        firstPositionId: group.positions[0].id
+      };
+    });
+
+    return rows.sort((a, b) => {
+      if (!a.articleCode) return b.articleCode ? 1 : compareDocumentIds(a.firstPositionId, b.firstPositionId);
+      if (!b.articleCode) return -1;
+      return a.articleCode.localeCompare(b.articleCode, 'fr', { sensitivity: 'variant' });
+    });
+  }
+
   function renderSearchResults() {
     const pageCount = Math.ceil(searchResults.length / searchResultPageSize);
     if (pageCount === 0) return;
     searchResultPage = Math.max(0, Math.min(searchResultPage, pageCount - 1));
     const start = searchResultPage * searchResultPageSize;
-    const docs = searchResults.slice(start, start + searchResultPageSize);
+    const rows = searchResults.slice(start, start + searchResultPageSize);
     const mode = searchResultMode === 'designation' ? ' par désignation' : '';
     const pageMessage = pageCount > 1 ? ' Page ' + (searchResultPage + 1) + ' sur ' + pageCount + '.' : '';
-    showStatus(searchStatus, searchResults.length + ' position(s) trouvée(s)' + mode + '.' + pageMessage, false, true);
-    results.innerHTML = docs.map((d, pageIndex) => {
-      const index = start + pageIndex;
-      const article = field(d, ['articlecode', 'name']);
-      const designation = field(d, ['designation', 'name', 'articleName', 'description']);
-      const initialQty = field(d, ['initialqy', 'initialqty', 'initialQuantity']);
-      const currentQty = field(d, ['currentqy', 'currentqty', 'currentQuantity', 'quantity', 'stockactuel']);
-      const date = field(d, ['inventorydate', 'dateinventaire', 'inventoryDate']);
-      const barcodeBrut = Array.isArray(d.barcodes)
-        ? d.barcodes.join(', ')
-        : field(d, ['barcodes', 'barcode', 'codebarre']);
-      const barcode = String(barcodeBrut).replace(/\*/g, '').trim();
-      const barcodeSvgId = 'barcode-svg-' + index;
-      return `<article class="result">
-        <h3>Position ${index + 1}</h3>
-        <div class="grid">
-          <div class="field"><strong>Code article</strong>${escapeHtml(article)}</div>
-          <div class="field"><strong>Désignation</strong>${escapeHtml(designation)}</div>
-          <div class="field"><strong>Magasin</strong>${escapeHtml(field(d, ['storename', 'storecode', 'magasin']))}</div>
-          <div class="field"><strong>Division</strong>${escapeHtml(field(d, ['divisionname', 'divisioncode', 'division']))}</div>
-          <div class="field"><strong>Quantité initiale</strong>${escapeHtml(initialQty)}</div>
-          <div class="field"><strong>Stock actuel</strong>${escapeHtml(currentQty)}</div>
-          <div class="field"><strong>Emplacement</strong>${escapeHtml(field(d, ['address', 'emplacement', 'location']))}</div>
-          <div class="field"><strong>Date inventaire</strong>${escapeHtml(date)}</div>
-          <div class="field"><strong>Code-barres</strong><div class="barcode-visual">${barcode ? `<svg id="${barcodeSvgId}"></svg><div>${escapeHtml(barcode)}</div>` : '<span class="small">Aucun code-barres enregistré</span>'}</div></div>
-        </div>
-      </article>`;
-    }).join('');
+    showStatus(searchStatus, searchResults.length + ' article(s) trouvé(s)' + mode + '.' + pageMessage, false, true);
+    results.innerHTML = '<div class="search-table-wrap" role="region" aria-label="Résultats du stock, faites défiler horizontalement si nécessaire" tabindex="0">' +
+      '<table class="search-table"><caption class="visually-hidden">Articles trouvés et stock de leurs positions</caption>' +
+      '<thead><tr><th scope="col">Code article</th><th scope="col">Désignation</th><th scope="col">Codes barres</th><th scope="col">Localisations</th><th scope="col">Stock actuel</th></tr></thead>' +
+      '<tbody>' + rows.map(row => '<tr>' +
+        '<td>' + escapeHtml(row.articleCode || '—') + '</td>' +
+        '<td>' + escapeHtml(row.designation) + '</td>' +
+        '<td>' + escapeHtml(row.barcodes) + '</td>' +
+        '<td>' + escapeHtml(row.locations) + '</td>' +
+        '<td>' + escapeHtml(row.currentStock) + '</td>' +
+      '</tr>').join('') + '</tbody></table></div>';
     if (pageCount > 1) {
       results.insertAdjacentHTML('beforeend',
         '<nav class="search-pagination" aria-label="Pagination des résultats">' +
@@ -949,20 +1036,6 @@
         (searchResultPage >= pageCount - 1 ? ' disabled' : '') + '>Page suivante</button>' +
         '</nav>');
     }
-    docs.forEach((d, pageIndex) => {
-      const index = start + pageIndex;
-      const raw = Array.isArray(d.barcodes) ? d.barcodes[0] : field(d, ['barcodes', 'barcode', 'codebarre']);
-      const value = String(raw || '').replace(/\*/g, '').trim();
-      const svg = document.getElementById('barcode-svg-' + index);
-      if (value && svg) {
-        if (window.JsBarcode) {
-          try { JsBarcode(svg, value, { format: 'CODE39', lineColor: '#000000', background: '#ffffff', width: 2, height: 65, displayValue: false, margin: 8 }); }
-          catch (e) { console.warn('Impossible de générer le code-barres visuel :', e); svg.outerHTML = '<span class=\"small\">Format du code-barres non pris en charge</span>'; }
-        } else {
-          svg.outerHTML = '<span class=\"small\">La bibliothèque de génération du code-barres ne se charge pas. Vérifiez la connexion Internet.</span>';
-        }
-      }
-    });
   }
 
   document.getElementById('scanBtn').addEventListener('click', startScanner);
