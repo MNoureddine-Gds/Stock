@@ -599,12 +599,9 @@
     const values = Array.isArray(value) ? value : value === null ? [] : [value];
     return values.map(item => String(item).replace(/\*/g, '').trim()).filter(Boolean);
   }
-  function positionLocation(data) {
-    return [
-      firstValue(data, ['storename', 'storecode', 'magasin']),
-      firstValue(data, ['divisionname', 'divisioncode', 'division']),
-      firstValue(data, ['address', 'emplacement', 'location'])
-    ].map(value => value === null ? '' : String(value).trim());
+  function positionAddress(data) {
+    const value = firstValue(data, ['address', 'emplacement', 'location']);
+    return value === null ? '' : String(value).trim();
   }
   const exportPageSize = 500;
   const exportSheetRowLimit = 1048576;
@@ -975,18 +972,14 @@
 
     const rows = [...groups.values()].map(group => {
       const barcodes = new Set();
-      const locations = new Map();
+      const addresses = new Set();
       let total = 0;
       let complete = true;
       group.positions.forEach(position => {
         const designation = positionDesignation(position);
         if (!group.designation && designation) group.designation = designation;
         positionBarcodes(position).forEach(barcode => barcodes.add(barcode));
-        const location = positionLocation(position);
-        const locationKey = JSON.stringify(location);
-        if (!locations.has(locationKey)) {
-          locations.set(locationKey, location.filter(Boolean).join(' / ') || 'Localisation non renseignée');
-        }
+        addresses.add(positionAddress(position) || 'Adresse non renseignée');
         const quantity = firstValue(position, ['currentqy', 'currentqty', 'currentQuantity', 'quantity', 'stockactuel']);
         if (!isValidCurrentQuantity(quantity)) complete = false;
         else total += Number(quantity);
@@ -995,7 +988,7 @@
         articleCode: group.articleCode === null ? '' : String(group.articleCode),
         designation: group.designation || '—',
         barcodes: [...barcodes].join(', ') || '—',
-        locations: [...locations.values()].join('; '),
+        locations: [...addresses].join(' + '),
         currentStock: complete && Number.isFinite(total)
           ? String(Number.isInteger(total) ? total : Math.round(total * 100) / 100)
           : 'Incomplet',
