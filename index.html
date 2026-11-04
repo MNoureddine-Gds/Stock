@@ -590,9 +590,11 @@
       return Number.isFinite(value) && value >= 0 &&
         (Number.isInteger(value) || /^\d+\.\d{1,2}$/.test(String(value)));
     }
-    if (typeof value !== 'string' || !/^-?\d+(\.\d{1,2})?$/.test(value)) return false;
-    const significantDigits = value.replace(/^-/, '').replace('.', '').replace(/^0+/, '').length || 1;
-    return Number.isFinite(Number(value)) && Number(value) >= 0 && significantDigits <= 15;
+    if (typeof value !== 'string') return false;
+    const normalized = value.trim();
+    if (!/^-?\d+(\.\d{1,2})?$/.test(normalized)) return false;
+    const significantDigits = normalized.replace(/^-/, '').replace('.', '').replace(/^0+/, '').length || 1;
+    return Number.isFinite(Number(normalized)) && Number(normalized) >= 0 && significantDigits <= 15;
   }
   const currentQuantityFields = ['currentqy', 'currentqty', 'currentQuantity', 'quantity', 'stockactuel'];
   function currentQuantityValue(data) {
@@ -994,22 +996,29 @@
         let designation = '';
         let total = 0;
         let complete = true;
+        let singlePositionQuantity = null;
         positions.forEach(position => {
           if (!designation) designation = positionDesignation(position);
           positionBarcodes(position).forEach(barcode => barcodes.add(barcode));
           locations.add(positionAddress(position) || 'Adresse non renseignée');
           const quantity = currentQuantityValue(position);
           if (!isValidCurrentQuantity(quantity)) complete = false;
-          else total += Number(quantity);
+          else {
+            if (positions.length === 1) singlePositionQuantity = quantity;
+            else total += Number(quantity);
+          }
         });
+        const currentStock = positions.length === 1
+          ? complete ? String(singlePositionQuantity).trim() : 'Incomplet'
+          : complete && Number.isFinite(total)
+            ? String(Number.isInteger(total) ? total : Math.round(total * 100) / 100)
+            : 'Incomplet';
         return {
           articleCode: group.articleCode === null ? '' : String(group.articleCode),
           designation: designation || '—',
           barcodes: [...barcodes].join(', ') || '—',
           locations: [...locations].join(' + '),
-          currentStock: complete && Number.isFinite(total)
-            ? String(Number.isInteger(total) ? total : Math.round(total * 100) / 100)
-            : 'Incomplet',
+          currentStock,
           firstPositionId: positions[0].id
         };
       });
