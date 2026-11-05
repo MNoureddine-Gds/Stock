@@ -647,7 +647,9 @@
       if (error && error.code === 'stock-movements/invalid-identity') return error.message;
       if (error && error.code === 'stock-movements/position-missing') return error.message;
       if (error && error.code === 'stock-movements/invalid-result') return error.message;
-      if (error && error.code === 'permission-denied') return 'Firestore a refusé cette opération. Vérifiez le rôle admin et les règles de sécurité.';
+      if (error && error.code === 'permission-denied') {
+        return 'Firestore a refusé cette opération. Les règles publiées ne contiennent probablement pas encore la version du dépôt : dans Firebase Console → Firestore → Règles, vérifiez la présence de legacyBalance et balanceMatches, collez si besoin le fichier firestore.rules puis Publier. Vérifiez aussi que votre compte a le rôle admin.';
+      }
       if (error && ['unavailable', 'deadline-exceeded', 'network-request-failed'].includes(error.code)) {
         return 'Le résultat de la connexion est incertain. Consultez l’historique avant de réessayer.';
       }
