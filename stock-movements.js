@@ -65,8 +65,24 @@
     return typeof value === 'number' && Number.isFinite(value) && value >= 0;
   }
 
+  function balanceNumber(value) {
+    if (typeof value === 'number') return validBalance(value) ? value : null;
+    if (typeof value !== 'string') return null;
+    const normalized = value.trim().replace(',', '.');
+    if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)) return null;
+    const significantDigits = normalized.replace('.', '').replace(/^0+/, '').length || 1;
+    if (significantDigits > 15) return null;
+    const balance = Number(normalized);
+    return validBalance(balance) ? balance : null;
+  }
+
+  function displayBalance(value) {
+    const balance = balanceNumber(value);
+    return balance === null ? value : balance;
+  }
+
   function quantityValue(rawValue) {
-    const value = String(rawValue || '').trim();
+    const value = String(rawValue === undefined || rawValue === null ? '' : rawValue).trim().replace(',', '.');
     if (!/^\d+(?:\.\d{1,2})?$/.test(value)) return null;
     const quantity = Number(value);
     return Number.isFinite(quantity) && quantity > 0 ? quantity : null;
@@ -249,7 +265,7 @@
           adminTab.classList.remove('hidden');
           clearStatus(accessStatus);
         } else {
-          disableAdminView();
+          disableAdminView('Votre compte n’a pas le rôle administrateur. L’onglet Mouvements est réservé aux admins.');
         }
       }, (error) => {
         if (generation !== authGeneration) return;
@@ -263,11 +279,9 @@
     }
 
     function renderSelections() {
-      selectedFrom.innerHTML = selectedSource
-        ? '<p><strong>Source sélectionnée</strong></p><p>' + escapeHtml(positionDescription(selectedSource)) + '</p><p class="small">Stock actuel : ' + escapeHtml(selectedSource.data.currentqy) + '</p><button class="secondary stock-movement-clear-selection" type="button" data-clear="source">Retirer la source</button>'
+      selectedFrom.innerHTML = selectedSource          ? '<p><strong>Source sélectionnée</strong></p><p>' + escapeHtml(positionDescription(selectedSource)) + '</p><p class="small">Stock actuel : ' + escapeHtml(displayBalance(selectedSource.data.currentqy)) + '</p><button class="secondary stock-movement-clear-selection" type="button" data-clear="source">Retirer la source</button>'
         : '<p class="small">Aucune position source sélectionnée.</p>';
-      selectedTo.innerHTML = selectedDestination
-        ? '<p><strong>Destination sélectionnée</strong></p><p>' + escapeHtml(positionDescription(selectedDestination)) + '</p><p class="small">Stock actuel : ' + escapeHtml(selectedDestination.data.currentqy) + '</p><button class="secondary stock-movement-clear-selection" type="button" data-clear="destination">Retirer la destination</button>'
+      selectedTo.innerHTML = selectedDestination          ? '<p><strong>Destination sélectionnée</strong></p><p>' + escapeHtml(positionDescription(selectedDestination)) + '</p><p class="small">Stock actuel : ' + escapeHtml(displayBalance(selectedDestination.data.currentqy)) + '</p><button class="secondary stock-movement-clear-selection" type="button" data-clear="destination">Retirer la destination</button>'
         : '<p class="small">Aucune position destination sélectionnée.</p>';
       selectedFrom.classList.toggle('hidden', currentType() === 'entry');
       selectedTo.classList.toggle('hidden', currentType() === 'exit');
@@ -346,7 +360,8 @@
           actions.push('<button class="secondary" type="button" data-position-index="' + index + '" data-position-slot="destination" ' +
             (selectedSource && (sameSource || sourceMismatch) || !canUse ? 'disabled' : '') + '>Choisir comme destination</button>');
         }
-        const invalidBalance = !validBalance(position.data.currentqy);
+        const balance = balanceNumber(position.data.currentqy);
+        const invalidBalance = balance === null;
         return '<article class="result stock-movement-position-result">' +
           '<div class="grid">' +
           fieldHtml('Code article', identity.articlecode) +
@@ -354,9 +369,12 @@
           fieldHtml('Magasin', identity.storename) +
           fieldHtml('Division', identity.divisionname) +
           fieldHtml('Emplacement', identity.address) +
-          fieldHtml('Stock actuel', position.data.currentqy) +
+          fieldHtml('Stock actuel', invalidBalance ? position.data.currentqy : balance) +
           '</div>' +
-          (invalidBalance ? '<p class="status error">Cette position ne peut pas être utilisée, car son stock actuel n’est pas un nombre valide. Une correction administrative est nécessaire.</p>' : '') +
+          (invalidBalance ? '<p class="status error">Cette position ne peut pas être utilisée, car son stock actuel n’est pas un nombre valide. Une correction administrative est nécessaire.</p>' :
+            (typeof position.data.currentqy === 'string'
+              ? '<p class="status">Quantité enregistrée comme texte (« ' + escapeHtml(position.data.currentqy) + ' ») : convertie en ' + escapeHtml(balance) + ' pour le calcul, puis enregistrée comme nombre au premier mouvement.</p>'
+              : '')) +
           (!canUse ? '<p class="status error">Les données d’identité de cette position sont incomplètes. Une correction administrative est nécessaire.</p>' : '') +
           '<div class="stock-movement-actions">' + actions.join('') + '</div></article>';
       }).join('');
@@ -481,8 +499,8 @@
       }
       const source = type === 'entry' ? null : selectedSource;
       const destination = type === 'exit' ? null : selectedDestination;
-      const sourceBefore = source ? source.data.currentqy : null;
-      const destinationBefore = destination ? destination.data.currentqy : null;
+      const sourceBefore = source ? balanceNumber(source.data.currentqy) : null;
+      const destinationBefore = destination ? balanceNumber(destination.data.currentqy) : null;
       if (source && !validBalance(sourceBefore) || destination && !validBalance(destinationBefore)) {
         setStatus(operationStatus, 'Le stock actuel d’une position est absent ou invalide. Aucune quantité ne sera déduite du stock initial. Demandez une correction administrative.', true);
         return;
@@ -562,8 +580,8 @@
           const destination = snapshots[1] ? getPositionSnapshot(snapshots[1]) : null;
           if (source) checkSelectedIdentity(source);
           if (destination) checkSelectedIdentity(destination);
-          const sourceBefore = source ? source.data.currentqy : null;
-          const destinationBefore = destination ? destination.data.currentqy : null;
+          const sourceBefore = source ? balanceNumber(source.data.currentqy) : null;
+          const destinationBefore = destination ? balanceNumber(destination.data.currentqy) : null;
           if (source && !validBalance(sourceBefore) || destination && !validBalance(destinationBefore)) {
             throw customError('stock-movements/invalid-balance', 'Le stock actuel d’une position est invalide. Demandez une correction administrative.');
           }
@@ -830,22 +848,22 @@
         throw customError('stock-movements/invalid-origin', 'Le mouvement d’origine a une quantité invalide.');
       }
       if (original.type === 'entry') {
-        const fromBefore = source.data.currentqy;
+        const fromBefore = balanceNumber(source.data.currentqy);
         if (!validBalance(fromBefore)) throw customError('stock-movements/invalid-balance', 'Le stock actuel est invalide. Demandez une correction administrative.');
         const fromAfter = fromBefore - amount;
         if (!validBalance(fromAfter)) throw customError('stock-movements/invalid-result', 'La correction rendrait le stock invalide.');
         return { type: 'reversal', reversesType: 'entry', quantity: amount, source, destination: null, fromBefore, fromAfter };
       }
       if (original.type === 'exit') {
-        const toBefore = destination.data.currentqy;
+        const toBefore = balanceNumber(destination.data.currentqy);
         if (!validBalance(toBefore)) throw customError('stock-movements/invalid-balance', 'Le stock actuel est invalide. Demandez une correction administrative.');
         const toAfter = toBefore + amount;
         if (!validBalance(toAfter)) throw customError('stock-movements/invalid-result', 'La correction rendrait le stock invalide.');
         return { type: 'reversal', reversesType: 'exit', quantity: amount, source: null, destination, toBefore, toAfter };
       }
       if (original.type === 'transfer') {
-        const fromBefore = source.data.currentqy;
-        const toBefore = destination.data.currentqy;
+        const fromBefore = balanceNumber(source.data.currentqy);
+        const toBefore = balanceNumber(destination.data.currentqy);
         if (!validBalance(fromBefore) || !validBalance(toBefore)) {
           throw customError('stock-movements/invalid-balance', 'Le stock actuel d’une position est invalide. Demandez une correction administrative.');
         }

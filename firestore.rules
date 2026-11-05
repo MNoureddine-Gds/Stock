@@ -31,6 +31,15 @@ service cloud.firestore {
       return finiteNumber(value) && value >= 0;
     }
 
+    function legacyBalance(value) {
+      return value is string &&
+        value.matches('^[0-9]{1,13}([.,][0-9]{1,2})?$');
+    }
+
+    function balanceMatches(stored, before) {
+      return stored == before || legacyBalance(stored);
+    }
+
     function validMovementQuantity(value) {
       return finiteNumber(value) &&
         value > 0 &&
@@ -145,7 +154,7 @@ service cloud.firestore {
         existsAfter(path) &&
         validBalance(before) &&
         validBalance(after) &&
-        oldPosition.currentqy == before &&
+        balanceMatches(oldPosition.currentqy, before) &&
         newPosition.currentqy == after &&
         newPosition.lastMovementId == movementId &&
         newPosition.diff(oldPosition).affectedKeys().hasOnly(['currentqy', 'lastMovementId']) &&
@@ -168,7 +177,7 @@ service cloud.firestore {
         data.toPositionId is string && data.toPositionId.size() > 0 &&
         validBalance(data.toBefore) &&
         validBalance(data.toAfter) &&
-        data.toBefore == position.currentqy &&
+        balanceMatches(position.currentqy, data.toBefore) &&
         data.toAfter == data.toBefore + data.quantity &&
         movementPositionUpdated(positionId, movementId, data.toBefore, data.toAfter, data.toPosition);
     }
@@ -189,7 +198,7 @@ service cloud.firestore {
         validBalance(data.fromBefore) &&
         validBalance(data.fromAfter) &&
         data.quantity <= data.fromBefore &&
-        data.fromBefore == position.currentqy &&
+        balanceMatches(position.currentqy, data.fromBefore) &&
         data.fromAfter == data.fromBefore - data.quantity &&
         movementPositionUpdated(positionId, movementId, data.fromBefore, data.fromAfter, data.fromPosition);
     }
@@ -218,8 +227,8 @@ service cloud.firestore {
         validBalance(data.toBefore) &&
         validBalance(data.toAfter) &&
         data.quantity <= data.fromBefore &&
-        data.fromBefore == fromPosition.currentqy &&
-        data.toBefore == toPosition.currentqy &&
+        balanceMatches(fromPosition.currentqy, data.fromBefore) &&
+        balanceMatches(toPosition.currentqy, data.toBefore) &&
         data.fromAfter == data.fromBefore - data.quantity &&
         data.toAfter == data.toBefore + data.quantity &&
         movementPositionUpdated(data.fromPositionId, movementId, data.fromBefore, data.fromAfter, data.fromPosition) &&
@@ -245,7 +254,7 @@ service cloud.firestore {
         validBalance(data.fromBefore) &&
         validBalance(data.fromAfter) &&
         data.quantity <= data.fromBefore &&
-        data.fromBefore == position.currentqy &&
+        balanceMatches(position.currentqy, data.fromBefore) &&
         data.fromAfter == data.fromBefore - data.quantity &&
         movementPositionUpdated(positionId, movementId, data.fromBefore, data.fromAfter, data.fromPosition);
     }
@@ -268,7 +277,7 @@ service cloud.firestore {
         data.quantity == original.quantity &&
         validBalance(data.toBefore) &&
         validBalance(data.toAfter) &&
-        data.toBefore == position.currentqy &&
+        balanceMatches(position.currentqy, data.toBefore) &&
         data.toAfter == data.toBefore + data.quantity &&
         movementPositionUpdated(positionId, movementId, data.toBefore, data.toAfter, data.toPosition);
     }
@@ -301,8 +310,8 @@ service cloud.firestore {
         validBalance(data.toBefore) &&
         validBalance(data.toAfter) &&
         data.quantity <= data.fromBefore &&
-        data.fromBefore == fromPosition.currentqy &&
-        data.toBefore == toPosition.currentqy &&
+        balanceMatches(fromPosition.currentqy, data.fromBefore) &&
+        balanceMatches(toPosition.currentqy, data.toBefore) &&
         data.fromAfter == data.fromBefore - data.quantity &&
         data.toAfter == data.toBefore + data.quantity &&
         movementPositionUpdated(data.fromPositionId, movementId, data.fromBefore, data.fromAfter, data.fromPosition) &&
@@ -381,25 +390,25 @@ service cloud.firestore {
         movement.createdAt == request.time &&
         (movement.type == 'entry' &&
           movement.toPositionId == positionId &&
-          movement.toBefore == oldPosition.currentqy &&
+          balanceMatches(oldPosition.currentqy, movement.toBefore) &&
           movement.toAfter == newPosition.currentqy ||
         movement.type == 'exit' &&
           movement.fromPositionId == positionId &&
-          movement.fromBefore == oldPosition.currentqy &&
+          balanceMatches(oldPosition.currentqy, movement.fromBefore) &&
           movement.fromAfter == newPosition.currentqy ||
         movement.type == 'transfer' &&
           (movement.fromPositionId == positionId &&
-            movement.fromBefore == oldPosition.currentqy &&
+            balanceMatches(oldPosition.currentqy, movement.fromBefore) &&
             movement.fromAfter == newPosition.currentqy ||
            movement.toPositionId == positionId &&
-            movement.toBefore == oldPosition.currentqy &&
+            balanceMatches(oldPosition.currentqy, movement.toBefore) &&
             movement.toAfter == newPosition.currentqy) ||
         movement.type == 'reversal' &&
           (movement.fromPositionId == positionId &&
-            movement.fromBefore == oldPosition.currentqy &&
+            balanceMatches(oldPosition.currentqy, movement.fromBefore) &&
             movement.fromAfter == newPosition.currentqy ||
            movement.toPositionId == positionId &&
-            movement.toBefore == oldPosition.currentqy &&
+            balanceMatches(oldPosition.currentqy, movement.toBefore) &&
             movement.toAfter == newPosition.currentqy));
     }
 
