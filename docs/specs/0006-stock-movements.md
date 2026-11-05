@@ -13,7 +13,7 @@ L’application utilise une page web en HTML, CSS et JavaScript, Firebase Authen
 
 Les règles Firestore actuelles protègent les positions contre les modifications depuis le client. Les mouvements doivent donc ajouter un historique traçable et autoriser une mise à jour très limitée de `currentqy`, sans permettre de modifier les autres champs d’une position ni de supprimer son historique.
 
-Cette fonctionnalité touche deux décisions indépendantes mais liées à l’usage quotidien du stock. La recherche par désignation est spécifiée séparément dans [0005](0005-search-by-designation.md) et sera réutilisée pour trouver les positions.
+Cette fonctionnalité touche deux décisions indépendantes mais liées à l’usage quotidien du stock. La recherche par désignation est spécifiée séparément dans [0005](0005-search-by-designation/index.md) et sera réutilisée pour trouver les positions.
 
 ## Requirements
 
@@ -29,7 +29,7 @@ Cette fonctionnalité touche deux décisions indépendantes mais liées à l’u
 - **AC-4**: Une entrée porte sur une position existante. Une sortie porte sur une position existante. Un transfert porte sur deux positions existantes du même article et ne peut pas cibler la même position.
 - **AC-5**: La quantité saisie est un nombre positif, fini, avec au plus deux décimales. Une quantité zéro ou négative est refusée. Une note facultative est limitée à 500 caractères.
 - **AC-6**: Avant écriture, l’application montre un résumé de l’opération, les positions concernées, la quantité, les quantités avant et après calculées, et la note. Aucune écriture n’a lieu avant confirmation explicite.
-- **AC-7**: Une position ne peut être utilisée que si `currentqy` existe et est un nombre valide. Une valeur texte telle que `#N/A` bloque l’opération et demande une correction administrative. Aucune quantité n’est devinée depuis `initialqy`.
+- **AC-7**: Une position ne peut être utilisée que si `currentqy` existe et est un nombre valide, ou une chaîne décimale convertible (point ou virgule, au plus deux décimales, au plus quinze chiffres significatifs). Une chaîne convertible est transformée en nombre avant le calcul, et le premier mouvement l’enregistre comme nombre. Une valeur texte non numérique telle que `#N/A` bloque l’opération et demande une correction administrative. Aucune quantité n’est devinée depuis `initialqy`.
 - **AC-8**: Une confirmation crée un document dans `stockMovements` et met à jour les `currentqy` concernés ainsi que leur `lastMovementId` dans une seule transaction Firestore. Pour chaque position modifiée, `lastMovementId` correspond à l’identifiant du nouveau mouvement. Une entrée augmente le stock, une sortie le diminue, et un transfert diminue la source et augmente la destination. `initialqy` et les autres champs de position restent inchangés.
 - **AC-9**: Une sortie ou un transfert qui ferait passer la position source sous zéro est refusé avec la quantité disponible. Aucune partie de l’opération n’est enregistrée.
 - **AC-10**: Une opération concurrente est recalculée par la transaction avec les valeurs actuelles. La transaction échoue clairement si la nouvelle quantité ne permet plus l’opération. Une opération non confirmée par le serveur n’est pas mise en attente hors connexion.
@@ -98,7 +98,7 @@ Pour lier le registre aux quantités, chaque position modifiée reçoit aussi `l
 
 ## Rationale
 
-Le stock existe déjà par position et doit rester consultable avec les règles actuelles. Un registre permanent rend les changements compréhensibles sans remplacer les données existantes par un recalcul incomplet. Comme l’application écrit directement dans Firestore et qu’aucun serveur n’est prévu, un marqueur vérifiable par les règles relie chaque variation au mouvement de la transaction, sans ajouter de service à exploiter. Les règles n’acceptent que les changements de `currentqy` et de `lastMovementId`, et comparent les soldes avant et après au mouvement. Les transactions empêchent de perdre un changement concurrent ou de valider un transfert partiel. Cette liaison rend les règles plus complexes qu’une fonction serveur dédiée.
+Le stock existe déjà par position et doit rester consultable avec les règles actuelles. Un registre permanent rend les changements compréhensibles sans remplacer les données existantes par un recalcul incomplet. Comme l’application écrit directement dans Firestore et qu’aucun serveur n’est prévu, un marqueur vérifiable par les règles relie chaque variation au mouvement de la transaction, sans ajouter de service à exploiter. Les règles n’acceptent que les changements de `currentqy` et de `lastMovementId`, et comparent les soldes avant et après au mouvement. Pour les positions héritées dont `currentqy` est une chaîne décimale, la fonction `balanceMatches` autorise la conversion en nombre lors du premier mouvement, sans vérifier l’égalité numérique de la valeur stockée puisque les règles ne savent pas convertir une virgule décimale; les mouvements suivants retrouvent la vérification numérique stricte. Les transactions empêchent de perdre un changement concurrent ou de valider un transfert partiel. Cette liaison rend les règles plus complexes qu’une fonction serveur dédiée.
 
 ## Feature design
 
@@ -191,7 +191,7 @@ Les règles refusent la modification et la suppression de `stockMovements`. Pour
 **Critical test scenarios**:
 
 - Un admin confirme une entrée, une sortie et un transfert. Chaque mouvement, chaque solde et chaque marqueur sont enregistrés ensemble, vérifie **AC-1** à **AC-8**, **AC-11**.
-- Une sortie supérieure au stock, une quantité nulle, une quantité à plus de deux décimales et un `currentqy` texte sont refusés sans écriture, vérifie **AC-5**, **AC-7**, **AC-9**.
+- Une sortie supérieure au stock, une quantité nulle, une quantité à plus de deux décimales et un `currentqy` texte non numérique sont refusés sans écriture, vérifie **AC-5**, **AC-7**, **AC-9**.
 - Deux transactions concurrentes recalculent le solde actuel et aucune quantité n’est perdue, vérifie **AC-8**, **AC-10**.
 - Un compte non admin ne voit pas l’onglet et les règles refusent une écriture directe, vérifie **AC-1**, **AC-14**.
 - Les règles refusent une mise à jour directe de quantité, un mouvement sans mise à jour des positions correspondantes, un marqueur absent ou incorrect, un mouvement dont les positions ou les calculs ne correspondent pas, une modification ou suppression de mouvement, et un transfert dont une seule position est liée, vérifie **AC-8**, **AC-15**.
@@ -241,7 +241,7 @@ Le projet suit une approche Tracer Bullet. Le premier parcours doit relier le fo
 - `docs/scope/scope.md`, exigences de gestion et de mouvements du stock.
 - `index.html`, recherche, scan et affichage actuels.
 - `firestore.rules`, règles actuelles de lecture et d’import.
-- [0005](0005-search-by-designation.md), recherche réutilisée pour sélectionner les positions.
+- [0005](0005-search-by-designation/index.md), recherche réutilisée pour sélectionner les positions.
 
 **Practices & standards**:
 - Registre immuable pour garder la trace des changements de stock.

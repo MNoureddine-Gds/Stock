@@ -41,6 +41,11 @@
 - Validate UI changes in the browser and check that Firestore reads still work with the signed in user.
 - Before a public Git push, verify that no secret or private configuration is included in tracked files.
 
+## Skills (commandes du projet)
+- Les commandes du workflow vivent dans `.claude/commands/` : `/audit`, `/scope`, `/architect`, `/develop`, `/check verify`, `/test`.
+- Index et enchaînement : `.claude/commands/README.md`.
+- Une commande ne coche une étape de `docs/scope/scope.md` que si le travail a réellement été fait et vérifié.
+
 ## Context files
 - [docs/scope/scope.md](docs/scope/scope.md) (current feature scope for the stock application)
 
