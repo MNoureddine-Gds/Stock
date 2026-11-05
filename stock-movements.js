@@ -44,21 +44,24 @@
   }
 
   function positionIdentity(data) {
-    const snapshot = {
-      articlecode: identityValue(data, 'articlecode'),
-      storename: identityValue(data, 'storename'),
-      divisionname: identityValue(data, 'divisionname'),
-      address: identityValue(data, 'address')
-    };
-    if (typeof data.designation === 'string') snapshot.designation = data.designation;
-    if (typeof data.barcodes === 'string' || Array.isArray(data.barcodes)) {
-      snapshot.barcodes = data.barcodes;
+      const snapshot = {};
+      const fields = ['articlecode', 'storename', 'divisionname', 'address', 'designation', 'barcodes'];
+      fields.forEach((field) => {
+        const value = data[field];
+        if (value === undefined || value === null) return;
+        if (typeof value === 'string' || Array.isArray(value)) {
+          snapshot[field] = value;
+        }
+      });
+      return snapshot;
     }
-    return snapshot;
-  }
 
   function hasValidIdentity(snapshot) {
-    return Boolean(snapshot.articlecode && snapshot.storename && snapshot.divisionname && snapshot.address);
+    const required = ['articlecode', 'storename', 'divisionname', 'address'];
+    return required.every((field) => {
+      const value = snapshot[field];
+      return typeof value === 'string' && value.trim().length > 0;
+    });
   }
 
   function validBalance(value) {
@@ -648,7 +651,8 @@
       if (error && error.code === 'stock-movements/position-missing') return error.message;
       if (error && error.code === 'stock-movements/invalid-result') return error.message;
       if (error && error.code === 'permission-denied') {
-        return 'Firestore a refusé cette opération. Les règles publiées ne contiennent probablement pas encore la version du dépôt : dans Firebase Console → Firestore → Règles, vérifiez la présence de legacyBalance et balanceMatches, collez si besoin le fichier firestore.rules puis Publier. Vérifiez aussi que votre compte a le rôle admin.';
+        const uid = auth.currentUser ? auth.currentUser.uid : 'non connecté';
+        return 'Firestore a refusé cette opération. Les règles publiées ne contiennent probablement pas encore la version du dépôt : dans Firebase Console → Firestore → Règles, vérifiez la présence de legacyBalance et balanceMatches, collez si besoin le fichier firestore.rules puis Publier. Vérifiez aussi que votre compte a le rôle admin pour le UID : ' + uid;
       }
       if (error && ['unavailable', 'deadline-exceeded', 'network-request-failed'].includes(error.code)) {
         return 'Le résultat de la connexion est incertain. Consultez l’historique avant de réessayer.';
